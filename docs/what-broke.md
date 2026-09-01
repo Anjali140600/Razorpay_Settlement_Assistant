@@ -51,6 +51,21 @@ The demo contains intentional failures such as:
 
 These cases remain visible in the exception list instead of being removed to improve the headline metric.
 
+They are **injected inconsistencies**, not a claim that Razorpay’s live settlement engine routinely misposts GST or pays the wrong UTR. Likelihood on **live Razorpay APIs** (not in our generator):
+
+| Case in test data | Chance Razorpay’s own settlement engine emits it | What is actually likely |
+|---|---|---|
+| GST off by ±1 paise | **High (by design)** | Rounding. We treat this as **pass**, not a mistake. |
+| Zero fee / zero GST on UPI promo | **High (by design)** | MDR waiver. Not a bug. |
+| Refunds, transfers, chargeback-style adjustments | **High (by design)** | Real products. Not mistakes. |
+| Header amount ≠ recon net (`batch_mismatch`, `orphan_header_drift`) | **Very low** on one processed snapshot | Timing or a **stale/partial export** is more plausible than Razorpay paying the wrong UTR. Rare as a standing bug. |
+| `credit ≠ amount − fee` | **Near zero** | That would be a platform integrity bug. Almost never in production. |
+| GST hundreds of paise wrong | **Near zero** | Same: calculator bug, not day-to-day. |
+| Refund debit ≠ refund amount | **Near zero** | Same. |
+| Transfer GST wildly wrong | **Near zero** | Same; marketplace fee rules can *look* odd, but not random 999 vs 2441. |
+
+Everyday mix, rounding, and zero-MDR are **common**. The six red “Needs attention” rows are **synthetic stress cases** so Track 04 can show an honest exception list. We are not saying Razorpay usually gets GST wrong.
+
 ### 4. AI is bounded
 
 The settlement assistant has read-only evidence tools. It cannot:
