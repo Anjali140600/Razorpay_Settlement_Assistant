@@ -1,0 +1,19 @@
+{
+  "settlements": 33,
+  "recon_lines": 173,
+  "payment_lines": 155,
+  "refund_lines": 10,
+  "transfer_lines": 4,
+  "adjustment_lines": 4,
+  "verified_settlements": 27,
+  "exception_settlements": 6,
+  "exception_ids": [
+    "setl_tax_mismatch",
+    "setl_batch_mismatch",
+    "setl_fee_semantic_error",
+    "setl_refund_wrong_amount",
+    "setl_transfer_tax_wrong",
+    "setl_orphan_header_drift"
+  ],
+  "unix_timestamp_lines": 65
+}

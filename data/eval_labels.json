@@ -1,0 +1,332 @@
+{
+  "version": "2",
+  "generated_at": "2026-09-01T10:23:11.238562Z",
+  "hackathon_track": "04_ai_finance_controller",
+  "label_source": "independent_verifier",
+  "label_verification": {
+    "matches": 33,
+    "total": 33
+  },
+  "dataset_profile": "realistic_merchant_mess",
+  "requirements": {
+    "min_recon_lines": 50,
+    "min_settlements": 25,
+    "exception_settlements": [
+      "setl_tax_mismatch",
+      "setl_batch_mismatch",
+      "setl_fee_semantic_error",
+      "setl_refund_wrong_amount",
+      "setl_transfer_tax_wrong",
+      "setl_orphan_header_drift"
+    ]
+  },
+  "summary": {
+    "total_settlements": 33,
+    "total_recon_lines": 173,
+    "verified": 27,
+    "needs_attention": 6,
+    "integrity_rate": 0.8182,
+    "line_types": {
+      "payment": 155,
+      "refund": 10,
+      "transfer": 4,
+      "adjustment": 4
+    },
+    "merchant_profiles": [
+      "d2c_volume",
+      "flash_sale",
+      "saas",
+      "marketplace",
+      "refund_heavy",
+      "chargebacks",
+      "zero_fee_upi",
+      "rounding_edge",
+      "b2b",
+      "combo_mess"
+    ],
+    "failure_types": [
+      "tax_mismatch",
+      "batch_mismatch",
+      "fee_semantic",
+      "refund_wrong",
+      "transfer_tax",
+      "header_drift"
+    ]
+  },
+  "labels": {
+    "setl_merchant_d2c_000": {
+      "status": "verified",
+      "batch_integrity": "pass",
+      "tax_lines": "pass",
+      "label_source": "independent_verifier",
+      "expected_net_paise": 1816447,
+      "header_amount_paise": 1816447
+    },
+    "setl_merchant_d2c_001": {
+      "status": "verified",
+      "batch_integrity": "pass",
+      "tax_lines": "pass",
+      "label_source": "independent_verifier",
+      "expected_net_paise": 2011514,
+      "header_amount_paise": 2011514
+    },
+    "setl_merchant_d2c_002": {
+      "status": "verified",
+      "batch_integrity": "pass",
+      "tax_lines": "pass",
+      "label_source": "independent_verifier",
+      "expected_net_paise": 1331464,
+      "header_amount_paise": 1331464
+    },
+    "setl_merchant_d2c_003": {
+      "status": "verified",
+      "batch_integrity": "pass",
+      "tax_lines": "pass",
+      "label_source": "independent_verifier",
+      "expected_net_paise": 1200914,
+      "header_amount_paise": 1200914
+    },
+    "setl_merchant_d2c_004": {
+      "status": "verified",
+      "batch_integrity": "pass",
+      "tax_lines": "pass",
+      "label_source": "independent_verifier",
+      "expected_net_paise": 2199873,
+      "header_amount_paise": 2199873
+    },
+    "setl_merchant_d2c_005": {
+      "status": "verified",
+      "batch_integrity": "pass",
+      "tax_lines": "pass",
+      "label_source": "independent_verifier",
+      "expected_net_paise": 1594805,
+      "header_amount_paise": 1594805
+    },
+    "setl_merchant_d2c_006": {
+      "status": "verified",
+      "batch_integrity": "pass",
+      "tax_lines": "pass",
+      "label_source": "independent_verifier",
+      "expected_net_paise": 1110535,
+      "header_amount_paise": 1110535
+    },
+    "setl_merchant_d2c_007": {
+      "status": "verified",
+      "batch_integrity": "pass",
+      "tax_lines": "pass",
+      "label_source": "independent_verifier",
+      "expected_net_paise": 732391,
+      "header_amount_paise": 732391
+    },
+    "setl_merchant_d2c_008": {
+      "status": "verified",
+      "batch_integrity": "pass",
+      "tax_lines": "pass",
+      "label_source": "independent_verifier",
+      "expected_net_paise": 922644,
+      "header_amount_paise": 922644
+    },
+    "setl_merchant_d2c_009": {
+      "status": "verified",
+      "batch_integrity": "pass",
+      "tax_lines": "pass",
+      "label_source": "independent_verifier",
+      "expected_net_paise": 1821644,
+      "header_amount_paise": 1821644
+    },
+    "setl_merchant_d2c_010": {
+      "status": "verified",
+      "batch_integrity": "pass",
+      "tax_lines": "pass",
+      "label_source": "independent_verifier",
+      "expected_net_paise": 1301255,
+      "header_amount_paise": 1301255
+    },
+    "setl_merchant_d2c_011": {
+      "status": "verified",
+      "batch_integrity": "pass",
+      "tax_lines": "pass",
+      "label_source": "independent_verifier",
+      "expected_net_paise": 2100941,
+      "header_amount_paise": 2100941
+    },
+    "setl_merchant_d2c_012": {
+      "status": "verified",
+      "batch_integrity": "pass",
+      "tax_lines": "pass",
+      "label_source": "independent_verifier",
+      "expected_net_paise": 1848732,
+      "header_amount_paise": 1848732
+    },
+    "setl_merchant_d2c_013": {
+      "status": "verified",
+      "batch_integrity": "pass",
+      "tax_lines": "pass",
+      "label_source": "independent_verifier",
+      "expected_net_paise": 697441,
+      "header_amount_paise": 697441
+    },
+    "setl_merchant_d2c_014": {
+      "status": "verified",
+      "batch_integrity": "pass",
+      "tax_lines": "pass",
+      "label_source": "independent_verifier",
+      "expected_net_paise": 1845255,
+      "header_amount_paise": 1845255
+    },
+    "setl_merchant_d2c_015": {
+      "status": "verified",
+      "batch_integrity": "pass",
+      "tax_lines": "pass",
+      "label_source": "independent_verifier",
+      "expected_net_paise": 2002845,
+      "header_amount_paise": 2002845
+    },
+    "setl_merchant_d2c_016": {
+      "status": "verified",
+      "batch_integrity": "pass",
+      "tax_lines": "pass",
+      "label_source": "independent_verifier",
+      "expected_net_paise": 2139530,
+      "header_amount_paise": 2139530
+    },
+    "setl_merchant_d2c_017": {
+      "status": "verified",
+      "batch_integrity": "pass",
+      "tax_lines": "pass",
+      "label_source": "independent_verifier",
+      "expected_net_paise": 2129361,
+      "header_amount_paise": 2129361
+    },
+    "setl_messy_flash_sale": {
+      "status": "verified",
+      "batch_integrity": "pass",
+      "tax_lines": "pass",
+      "label_source": "independent_verifier",
+      "expected_net_paise": 202131,
+      "header_amount_paise": 202131
+    },
+    "setl_messy_saas": {
+      "status": "verified",
+      "batch_integrity": "pass",
+      "tax_lines": "pass",
+      "label_source": "independent_verifier",
+      "expected_net_paise": 3419804,
+      "header_amount_paise": 3419804
+    },
+    "setl_messy_marketplace": {
+      "status": "verified",
+      "batch_integrity": "pass",
+      "tax_lines": "pass",
+      "label_source": "independent_verifier",
+      "expected_net_paise": 7652000,
+      "header_amount_paise": 7652000
+    },
+    "setl_messy_refund_day": {
+      "status": "verified",
+      "batch_integrity": "pass",
+      "tax_lines": "pass",
+      "label_source": "independent_verifier",
+      "expected_net_paise": 3948200,
+      "header_amount_paise": 3948200
+    },
+    "setl_messy_chargebacks": {
+      "status": "verified",
+      "batch_integrity": "pass",
+      "tax_lines": "pass",
+      "label_source": "independent_verifier",
+      "expected_net_paise": 1828500,
+      "header_amount_paise": 1828500
+    },
+    "setl_messy_zero_fee_upi": {
+      "status": "verified",
+      "batch_integrity": "pass",
+      "tax_lines": "pass",
+      "label_source": "independent_verifier",
+      "expected_net_paise": 576253,
+      "header_amount_paise": 576253
+    },
+    "setl_messy_rounding_ok": {
+      "status": "verified",
+      "batch_integrity": "pass",
+      "tax_lines": "pass",
+      "label_source": "independent_verifier",
+      "expected_net_paise": 166600,
+      "header_amount_paise": 166600
+    },
+    "setl_messy_b2b": {
+      "status": "verified",
+      "batch_integrity": "pass",
+      "tax_lines": "pass",
+      "label_source": "independent_verifier",
+      "expected_net_paise": 20972000,
+      "header_amount_paise": 20972000
+    },
+    "setl_messy_combo": {
+      "status": "verified",
+      "batch_integrity": "pass",
+      "tax_lines": "pass",
+      "label_source": "independent_verifier",
+      "expected_net_paise": 3915900,
+      "header_amount_paise": 3915900
+    },
+    "setl_tax_mismatch": {
+      "status": "needs_attention",
+      "batch_integrity": "pass",
+      "tax_lines": "fail",
+      "label_source": "independent_verifier",
+      "expected_net_paise": 1813000,
+      "header_amount_paise": 1813000,
+      "reason": "pay_setl_tax_mismatch_1: tax 2793 != expected 2593 (\u00b11)",
+      "bad_line_id": "pay_setl_tax_mismatch_1"
+    },
+    "setl_batch_mismatch": {
+      "status": "needs_attention",
+      "batch_integrity": "fail",
+      "tax_lines": "pass",
+      "label_source": "independent_verifier",
+      "expected_net_paise": 4214000,
+      "header_amount_paise": 4264000,
+      "reason": "Header 4264000 != recon net 4214000"
+    },
+    "setl_fee_semantic_error": {
+      "status": "needs_attention",
+      "batch_integrity": "fail",
+      "tax_lines": "fail",
+      "label_source": "independent_verifier",
+      "expected_net_paise": 14800,
+      "header_amount_paise": 14800,
+      "reason": "Header 14800 != recon net 14800"
+    },
+    "setl_refund_wrong_amount": {
+      "status": "needs_attention",
+      "batch_integrity": "pass",
+      "tax_lines": "fail",
+      "label_source": "independent_verifier",
+      "expected_net_paise": 1957000,
+      "header_amount_paise": 1957000,
+      "reason": "rfnd_setl_refund_wrong_amount_0: refund debit must equal amount",
+      "bad_line_id": "rfnd_setl_refund_wrong_amount_0"
+    },
+    "setl_transfer_tax_wrong": {
+      "status": "needs_attention",
+      "batch_integrity": "pass",
+      "tax_lines": "fail",
+      "label_source": "independent_verifier",
+      "expected_net_paise": 4084000,
+      "header_amount_paise": 4084000,
+      "reason": "trf_setl_transfer_tax_wrong_0: tax 999 != expected 2441",
+      "bad_line_id": "trf_setl_transfer_tax_wrong_0"
+    },
+    "setl_orphan_header_drift": {
+      "status": "needs_attention",
+      "batch_integrity": "fail",
+      "tax_lines": "pass",
+      "label_source": "independent_verifier",
+      "expected_net_paise": 4410000,
+      "header_amount_paise": 4420000,
+      "reason": "Header 4420000 != recon net 4410000"
+    }
+  },
+  "holdout_note": "Independent holdout eval: data/fixtures/holdout/ \u2014 NOT from this generator"
+}

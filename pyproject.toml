@@ -1,0 +1,27 @@
+[project]
+name = "razorpay-settlement-assistant"
+version = "0.1.0"
+description = "Razorpay-native settlement verification and evidence-backed Q&A assistant"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "pydantic>=2.0",
+    "polars>=0.20",
+    "rapidfuzz>=3.0",
+    "streamlit>=1.30",
+    "sqlalchemy>=2.0",
+    "python-dateutil>=2.8",
+    "python-dotenv>=1.0",
+    "openai>=1.0",
+    "httpx>=0.27",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0", "pytest-cov>=4.0", "hypothesis>=6.0"]
+
+[project.scripts]
+razorpay-settlement-assistant = "src.cli:main"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

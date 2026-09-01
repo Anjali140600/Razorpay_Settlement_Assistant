@@ -1,0 +1,60 @@
+{
+  "items": [
+    {
+      "id": "setl_holdout_d2c_day",
+      "amount": 56348,
+      "utr": "UTR20260715001HLD1",
+      "status": "processed",
+      "processed_at": "2026-07-15T00:00:00"
+    },
+    {
+      "id": "setl_holdout_marketplace",
+      "amount": 47000,
+      "utr": "UTR20260716002HLD2",
+      "status": "processed",
+      "processed_at": "2026-07-16T00:00:00"
+    },
+    {
+      "id": "setl_holdout_zero_fee_upi",
+      "amount": 114900,
+      "utr": "UTR20260717003HLD3",
+      "status": "processed",
+      "processed_at": "2026-07-17T00:00:00"
+    },
+    {
+      "id": "setl_holdout_rounding_ok",
+      "amount": 49000,
+      "utr": "UTR20260718004HLD4",
+      "status": "processed",
+      "processed_at": "2026-07-18T00:00:00"
+    },
+    {
+      "id": "setl_holdout_refund_storm",
+      "amount": 39960,
+      "utr": "UTR20260719005HLD5",
+      "status": "processed",
+      "processed_at": "2026-07-19T00:00:00"
+    },
+    {
+      "id": "setl_holdout_tax_fail",
+      "amount": 19600,
+      "utr": "UTR20260720006HLD6",
+      "status": "processed",
+      "processed_at": "2026-07-20T00:00:00"
+    },
+    {
+      "id": "setl_holdout_batch_fail",
+      "amount": 30000,
+      "utr": "UTR20260721007HLD7",
+      "status": "processed",
+      "processed_at": "2026-07-21T00:00:00"
+    },
+    {
+      "id": "setl_holdout_semantic_fail",
+      "amount": 9900,
+      "utr": "UTR20260722008HLD8",
+      "status": "processed",
+      "processed_at": "2026-07-22T00:00:00"
+    }
+  ]
+}

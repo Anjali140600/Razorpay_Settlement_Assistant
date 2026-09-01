@@ -1,0 +1,235 @@
+{
+  "items": [
+    {
+      "id": "setl_merchant_d2c_000",
+      "amount": 1816447,
+      "utr": "UTR202608000000D2C",
+      "status": "processed",
+      "processed_at": "2026-08-02T00:00:00"
+    },
+    {
+      "id": "setl_merchant_d2c_001",
+      "amount": 2011514,
+      "utr": "UTR202608000001D2C",
+      "status": "processed",
+      "processed_at": "2026-08-03T00:00:00"
+    },
+    {
+      "id": "setl_merchant_d2c_002",
+      "amount": 1331464,
+      "utr": "UTR202608000002D2C",
+      "status": "processed",
+      "processed_at": "2026-08-04T00:00:00"
+    },
+    {
+      "id": "setl_merchant_d2c_003",
+      "amount": 1200914,
+      "utr": "UTR202608000003D2C",
+      "status": "processed",
+      "processed_at": "2026-08-05T00:00:00"
+    },
+    {
+      "id": "setl_merchant_d2c_004",
+      "amount": 2199873,
+      "utr": "UTR202608000004D2C",
+      "status": "processed",
+      "processed_at": "2026-08-06T00:00:00"
+    },
+    {
+      "id": "setl_merchant_d2c_005",
+      "amount": 1594805,
+      "utr": "UTR202608000005D2C",
+      "status": "processed",
+      "processed_at": "2026-08-07T00:00:00"
+    },
+    {
+      "id": "setl_merchant_d2c_006",
+      "amount": 1110535,
+      "utr": "UTR202608000006D2C",
+      "status": "processed",
+      "processed_at": "2026-08-08T00:00:00"
+    },
+    {
+      "id": "setl_merchant_d2c_007",
+      "amount": 732391,
+      "utr": "UTR202608000007D2C",
+      "status": "processed",
+      "processed_at": "2026-08-09T00:00:00"
+    },
+    {
+      "id": "setl_merchant_d2c_008",
+      "amount": 922644,
+      "utr": "UTR202608000008D2C",
+      "status": "processed",
+      "processed_at": "2026-08-10T00:00:00"
+    },
+    {
+      "id": "setl_merchant_d2c_009",
+      "amount": 1821644,
+      "utr": "UTR202608000009D2C",
+      "status": "processed",
+      "processed_at": "2026-08-11T00:00:00"
+    },
+    {
+      "id": "setl_merchant_d2c_010",
+      "amount": 1301255,
+      "utr": "UTR202608000010D2C",
+      "status": "processed",
+      "processed_at": "2026-08-12T00:00:00"
+    },
+    {
+      "id": "setl_merchant_d2c_011",
+      "amount": 2100941,
+      "utr": "UTR202608000011D2C",
+      "status": "processed",
+      "processed_at": "2026-08-13T00:00:00"
+    },
+    {
+      "id": "setl_merchant_d2c_012",
+      "amount": 1848732,
+      "utr": "UTR202608000012D2C",
+      "status": "processed",
+      "processed_at": "2026-08-14T00:00:00"
+    },
+    {
+      "id": "setl_merchant_d2c_013",
+      "amount": 697441,
+      "utr": "UTR202608000013D2C",
+      "status": "processed",
+      "processed_at": "2026-08-15T00:00:00"
+    },
+    {
+      "id": "setl_merchant_d2c_014",
+      "amount": 1845255,
+      "utr": "UTR202608000014D2C",
+      "status": "processed",
+      "processed_at": "2026-08-16T00:00:00"
+    },
+    {
+      "id": "setl_merchant_d2c_015",
+      "amount": 2002845,
+      "utr": "UTR202608000015D2C",
+      "status": "processed",
+      "processed_at": "2026-08-17T00:00:00"
+    },
+    {
+      "id": "setl_merchant_d2c_016",
+      "amount": 2139530,
+      "utr": "UTR202608000016D2C",
+      "status": "processed",
+      "processed_at": "2026-08-18T00:00:00"
+    },
+    {
+      "id": "setl_merchant_d2c_017",
+      "amount": 2129361,
+      "utr": "UTR202608000017D2C",
+      "status": "processed",
+      "processed_at": "2026-08-19T00:00:00"
+    },
+    {
+      "id": "setl_messy_flash_sale",
+      "amount": 202131,
+      "utr": "UTR20260810001FLASH",
+      "status": "processed",
+      "processed_at": "2026-08-09T00:00:00"
+    },
+    {
+      "id": "setl_messy_saas",
+      "amount": 3419804,
+      "utr": "UTR20260810002SAAS",
+      "status": "processed",
+      "processed_at": "2026-08-10T00:00:00"
+    },
+    {
+      "id": "setl_messy_marketplace",
+      "amount": 7652000,
+      "utr": "UTR20260810003MKT",
+      "status": "processed",
+      "processed_at": "2026-08-12T00:00:00"
+    },
+    {
+      "id": "setl_messy_refund_day",
+      "amount": 3948200,
+      "utr": "UTR20260810004RFD",
+      "status": "processed",
+      "processed_at": "2026-08-14T00:00:00"
+    },
+    {
+      "id": "setl_messy_chargebacks",
+      "amount": 1828500,
+      "utr": "UTR20260810005CBK",
+      "status": "processed",
+      "processed_at": "2026-08-15T00:00:00"
+    },
+    {
+      "id": "setl_messy_zero_fee_upi",
+      "amount": 576253,
+      "utr": "UTR20260810006UPI0",
+      "status": "processed",
+      "processed_at": "2026-08-16T00:00:00"
+    },
+    {
+      "id": "setl_messy_rounding_ok",
+      "amount": 166600,
+      "utr": "UTR20260810007RND",
+      "status": "processed",
+      "processed_at": "2026-08-17T00:00:00"
+    },
+    {
+      "id": "setl_messy_b2b",
+      "amount": 20972000,
+      "utr": "UTR20260810008B2B",
+      "status": "processed",
+      "processed_at": "2026-08-18T00:00:00"
+    },
+    {
+      "id": "setl_messy_combo",
+      "amount": 3915900,
+      "utr": "UTR20260810009ALL",
+      "status": "processed",
+      "processed_at": "2026-08-19T00:00:00"
+    },
+    {
+      "id": "setl_tax_mismatch",
+      "amount": 1813000,
+      "utr": "UTR20260809999TAX1",
+      "status": "processed",
+      "processed_at": "2026-08-11T00:00:00"
+    },
+    {
+      "id": "setl_batch_mismatch",
+      "amount": 4264000,
+      "utr": "UTR20260808888BCH1",
+      "status": "processed",
+      "processed_at": "2026-08-13T00:00:00"
+    },
+    {
+      "id": "setl_fee_semantic_error",
+      "amount": 14800,
+      "utr": "UTR20260807777SEM1",
+      "status": "processed",
+      "processed_at": "2026-08-20T00:00:00"
+    },
+    {
+      "id": "setl_refund_wrong_amount",
+      "amount": 1957000,
+      "utr": "UTR20260806666RFD1",
+      "status": "processed",
+      "processed_at": "2026-08-21T00:00:00"
+    },
+    {
+      "id": "setl_transfer_tax_wrong",
+      "amount": 4084000,
+      "utr": "UTR20260805555TRF1",
+      "status": "processed",
+      "processed_at": "2026-08-22T00:00:00"
+    },
+    {
+      "id": "setl_orphan_header_drift",
+      "amount": 4420000,
+      "utr": "UTR20260804444ORP1",
+      "status": "processed",
+      "processed_at": "2026-08-23T00:00:00"
+    }
+  ]
+}
