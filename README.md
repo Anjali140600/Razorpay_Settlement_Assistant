@@ -44,8 +44,10 @@ Open http://localhost:8501
 - **6 intentional failures** — tax, batch, refund, transfer, semantic errors exported honestly
 - **Independent holdout** — 8 hand-crafted settlements separate from generator (`docs/dataset-realism.md`)
 - **Tax-line pass rate** · **Throughput** · **Full exception export**
-- **Q&A trust scorecard** — 41 hand-labeled questions scored on both answer paths, worst
-  of N runs published. See [sample-output/qa_scorecard.md](sample-output/qa_scorecard.md).
+- **Q&A trust scorecard** — 41 hand-labeled questions scored on both answer paths.
+  Measured: **money-exact 63.6% → 100%** with the AI path, **0 unverified amounts
+  emitted**, and **12 model-stated wrong amounts caught by the deterministic
+  validator**. See [sample-output/qa_scorecard.md](sample-output/qa_scorecard.md).
 - **Exception closure rate** — measured on hand-written two-cycle fixtures. Most
   exceptions stay open by design; only an exact, uniquely-referenced adjustment closes one.
 

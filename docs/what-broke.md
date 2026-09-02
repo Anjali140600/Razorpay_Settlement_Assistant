@@ -457,11 +457,26 @@ Nothing in the output said so. The report now records `last_llm_error` per case,
 the provider failed. A baseline-only run renders a single column instead of duplicating
 deterministic numbers under an "AI enabled" heading.
 
-At the time of writing the AI column is therefore **unmeasured**, and the committed
-scorecard says exactly that. What was captured before the quota died: the LLM answered 7
-of 41 cases and the deterministic validator caught **3 attempts to state a wrong rupee
-amount**, none of which reached the user. That is a real observation, not a published
-metric — three runs on a live provider are still owed.
+Pacing the eval (`--delay`) fixed the per-minute rate limit and produced two near-clean
+runs before the **daily** token budget ran out during the third. The published figure is
+therefore the worst of **one clean run of three attempted**, and the header says so.
+
+That clean run is the measurement worth having: pass rate 92.7% against an 82.9%
+deterministic baseline, **money-exact 100% against 63.6%**, zero unverified amounts, and
+**12 model-stated wrong amounts caught by the deterministic validator**. The LLM
+materially improves money answers *and* attempted a dozen wrong figures while doing it.
+Both halves of that sentence are the point.
+
+### 4b. The degraded run became the published score
+
+Worse than the quota failure itself: `worst_run` selected the lowest pass rate across
+*all* runs, so the quota-killed run (82.9%, 5 LLM answers) was published as the headline
+while a clean run in the same pass had scored 92.7% with 26. "Publish the worst run" is
+the right instinct and it inverted into publishing the least valid one.
+
+A degraded run is now excluded from selection entirely, the header discloses how many
+runs were clean out of those attempted, and every run's per-case rows are retained so a
+headline can be re-selected without spending another provider budget.
 
 ### 5. Three of our own eval labels were wrong
 
