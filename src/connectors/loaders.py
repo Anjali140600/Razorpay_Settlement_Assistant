@@ -48,6 +48,7 @@ def load_recon_json(path: Path) -> list[SettlementLine]:
                 created_at=_parse_dt(row.get("created_at")),
                 settled_at=_parse_dt(row.get("settled_at")),
                 description=str(row.get("description", "")),
+                reference_settlement_id=row.get("reference_settlement_id"),
             )
         )
     return lines

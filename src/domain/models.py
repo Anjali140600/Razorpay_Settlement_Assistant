@@ -67,6 +67,10 @@ class SettlementLine(BaseModel):
     created_at: datetime | None = None
     settled_at: datetime | None = None
     description: str = ""
+    # Razorpay adjustments that correct an earlier cycle name the settlement they
+    # compensate. Without an exact reference, amount plus timing alone would bind the
+    # wrong exception — which is how a matcher silently corrupts a financial record.
+    reference_settlement_id: str | None = None
 
 
 class SettlementBatch(BaseModel):
@@ -158,6 +162,7 @@ class AnswerEnvelope(BaseModel):
     citations: list[str] = Field(default_factory=list)
     abstained: bool = False
     escalated_to_support: bool = False
+    offer_raise_ticket: bool = False
     support_ticket_id: str | None = None
     settlement_id: str | None = None
     tool_trace: list[str] = Field(default_factory=list)
