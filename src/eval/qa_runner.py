@@ -17,6 +17,7 @@ from src.agent.settlement_qa import (
     clear_guardrail_events,
     clear_llm_answer_cache,
     last_guardrail_events,
+    last_llm_error,
     money_figures,
 )
 from src.domain.models import AnswerEnvelope, SettlementBatch
@@ -90,6 +91,7 @@ def score_case(
     env: AnswerEnvelope,
     events: list[dict[str, str]],
     allowed_money: set[str],
+    llm_error: str | None = None,
 ) -> dict[str, Any]:
     """Grade one answer against its label. Never mutates the envelope."""
     stated = money_figures(env.answer_text)
@@ -119,6 +121,9 @@ def score_case(
         "unverified_amount_emitted": unverified,
         "validator_caught_wrong_amount": _count(events, "wrong_amount"),
         "validator_caught_bad_citation": _count(events, "bad_citation"),
+        # A rules answer forced by a dead provider is not model behaviour, and a
+        # column full of them must never be published as a model score.
+        "llm_error": llm_error,
         "detail": env.answer_text[:200],
     }
 
@@ -161,6 +166,7 @@ def aggregate(rows: list[dict[str, Any]]) -> dict[str, Any]:
         "qa_validator_caught_bad_citation": sum(
             r["validator_caught_bad_citation"] for r in rows
         ),
+        "qa_llm_unavailable": sum(1 for r in rows if r.get("llm_error")),
     }
 
 
@@ -180,6 +186,7 @@ def run_column(
             score_case(
                 case, env, last_guardrail_events(),
                 allowed_money_for_answer(case, env, batches),
+                llm_error=last_llm_error() if use_llm else None,
             )
         )
     return rows

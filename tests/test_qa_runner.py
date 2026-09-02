@@ -201,3 +201,29 @@ def test_cited_payment_line_resolves_through_its_settlement(batches):
     env = AnswerEnvelope(answer_text="x", citations=["pay_setl_messy_b2b_0"],
                          agent_mode="keyword")
     assert "₹209720.00" in allowed_money_for_answer(c, env, batches)
+
+
+def test_provider_failure_is_recorded_per_case():
+    """A rules answer caused by provider exhaustion is not model behaviour."""
+    from src.eval.qa_runner import aggregate
+
+    rows = [
+        {"qa_class": "answerable", "passed": True, "answered_by": "rules",
+         "citations_valid": True, "unverified_amount_emitted": False,
+         "validator_caught_wrong_amount": 0, "validator_caught_bad_citation": 0,
+         "llm_error": "groq: daily free-tier token limit reached"},
+        {"qa_class": "answerable", "passed": True, "answered_by": "llm",
+         "citations_valid": True, "unverified_amount_emitted": False,
+         "validator_caught_wrong_amount": 0, "validator_caught_bad_citation": 0,
+         "llm_error": None},
+    ]
+    assert aggregate(rows)["qa_llm_unavailable"] == 1
+
+
+def test_llm_unavailable_defaults_to_zero_when_absent():
+    from src.eval.qa_runner import aggregate
+
+    rows = [{"qa_class": "answerable", "passed": True, "answered_by": "llm",
+             "citations_valid": True, "unverified_amount_emitted": False,
+             "validator_caught_wrong_amount": 0, "validator_caught_bad_citation": 0}]
+    assert aggregate(rows)["qa_llm_unavailable"] == 0
