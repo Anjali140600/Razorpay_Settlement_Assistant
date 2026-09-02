@@ -1,0 +1,7 @@
+{"items": [
+  {"id": "setl_lc_exact", "amount": 100000, "status": "processed", "utr": "UTRLC0001", "created_at": "2026-08-28T10:00:00Z", "processed_at": "2026-08-28T10:00:00Z"},
+  {"id": "setl_lc_wrong_amount", "amount": 200000, "status": "processed", "utr": "UTRLC0002", "created_at": "2026-08-28T10:00:00Z", "processed_at": "2026-08-28T10:00:00Z"},
+  {"id": "setl_lc_duplicate_adjustments", "amount": 300000, "status": "processed", "utr": "UTRLC0003", "created_at": "2026-08-28T10:00:00Z", "processed_at": "2026-08-28T10:00:00Z"},
+  {"id": "setl_lc_no_reference", "amount": 500000, "status": "processed", "utr": "UTRLC0005", "created_at": "2026-08-28T10:00:00Z", "processed_at": "2026-08-28T10:00:00Z"},
+  {"id": "setl_lc_never_adjusted", "amount": 600000, "status": "processed", "utr": "UTRLC0006", "created_at": "2026-08-28T10:00:00Z", "processed_at": "2026-08-28T10:00:00Z"}
+]}

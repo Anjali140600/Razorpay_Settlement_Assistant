@@ -1,0 +1,12 @@
+{
+  "version": "1",
+  "description": "Hand-written two-cycle lifecycle fixtures. NOT produced by data/synthetic/generator.py — a generator that writes both the defect and its remedy would make the closure metric circular, proving code execution rather than matching quality.",
+  "source": "manual_fixtures",
+  "labels": {
+    "setl_lc_exact": {"expected_state": "CLOSED_COMPENSATED", "expected_delta_paise": 2000, "reason": "exact amount, explicit reference, unique match"},
+    "setl_lc_wrong_amount": {"expected_state": "OPEN", "expected_delta_paise": 4000, "reason": "adjustment credits 3500 against a 4000 delta — no tolerance"},
+    "setl_lc_duplicate_adjustments": {"expected_state": "OPEN", "expected_delta_paise": 5000, "reason": "two identical valid adjustments; one-to-one fails, so nothing binds"},
+    "setl_lc_no_reference": {"expected_state": "OPEN", "expected_delta_paise": 7000, "reason": "exact amount but the adjustment names no settlement"},
+    "setl_lc_never_adjusted": {"expected_state": "OPEN", "expected_delta_paise": 9000, "reason": "no adjustment ever arrives"}
+  }
+}

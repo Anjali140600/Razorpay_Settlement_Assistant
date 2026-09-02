@@ -1,0 +1,7 @@
+{"items": [
+  {"entity_id": "pay_lc_exact_0", "type": "payment", "debit": 0, "credit": 98000, "amount": 100000, "fee": 2000, "tax": 305, "currency": "INR", "settlement_id": "setl_lc_exact", "created_at": "2026-08-28T09:00:00Z", "settled_at": "2026-08-28T10:00:00Z", "description": "Card payment"},
+  {"entity_id": "pay_lc_wrong_amount_0", "type": "payment", "debit": 0, "credit": 196000, "amount": 200000, "fee": 4000, "tax": 610, "currency": "INR", "settlement_id": "setl_lc_wrong_amount", "created_at": "2026-08-28T09:00:00Z", "settled_at": "2026-08-28T10:00:00Z", "description": "Card payment"},
+  {"entity_id": "pay_lc_duplicate_adjustments_0", "type": "payment", "debit": 0, "credit": 295000, "amount": 300000, "fee": 5000, "tax": 763, "currency": "INR", "settlement_id": "setl_lc_duplicate_adjustments", "created_at": "2026-08-28T09:00:00Z", "settled_at": "2026-08-28T10:00:00Z", "description": "Card payment"},
+  {"entity_id": "pay_lc_no_reference_0", "type": "payment", "debit": 0, "credit": 493000, "amount": 500000, "fee": 7000, "tax": 1068, "currency": "INR", "settlement_id": "setl_lc_no_reference", "created_at": "2026-08-28T09:00:00Z", "settled_at": "2026-08-28T10:00:00Z", "description": "Card payment"},
+  {"entity_id": "pay_lc_never_adjusted_0", "type": "payment", "debit": 0, "credit": 591000, "amount": 600000, "fee": 9000, "tax": 1373, "currency": "INR", "settlement_id": "setl_lc_never_adjusted", "created_at": "2026-08-28T09:00:00Z", "settled_at": "2026-08-28T10:00:00Z", "description": "Card payment"}
+]}
