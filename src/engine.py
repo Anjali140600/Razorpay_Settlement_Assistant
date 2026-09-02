@@ -6,7 +6,7 @@ import json
 import src.config  # noqa: F401 — load .env before other imports use os.environ
 
 import time
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 
 from src.agent.llm_client import agent_mode_label, get_llm_model, llm_provider, should_use_llm
@@ -130,7 +130,10 @@ class ReconciliationEngine:
             "tax_line_pass_rate": tax_pass / processed if processed else 0.0,
             "labeled_control_accuracy": label_matches / label_total if label_total else None,
             "labeled_control_count": label_total,
-            "label_source": "independent_verifier",
+            # "independent" here means independent of the GENERATOR. The verifier
+            # shares razorpay_contract with the controls, so it is not a fully
+            # independent oracle and the name must not imply one.
+            "label_source": "contract_verifier_independent_of_generator",
             "proven_settlements": verified,
             "investigation_cases": len(run.investigation_cases),
             "agent_mode": mode,
@@ -145,7 +148,7 @@ class ReconciliationEngine:
         }
 
         run.runtime_seconds = elapsed
-        run.completed_at = run.started_at
+        run.completed_at = datetime.utcnow()
         run.audit_events.append(
             AuditEvent(run_id=run.run_id, event_type="run_completed", payload=run.metrics)
         )
