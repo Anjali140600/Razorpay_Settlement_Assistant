@@ -227,3 +227,23 @@ def test_llm_unavailable_defaults_to_zero_when_absent():
              "citations_valid": True, "unverified_amount_emitted": False,
              "validator_caught_wrong_amount": 0, "validator_caught_bad_citation": 0}]
     assert aggregate(rows)["qa_llm_unavailable"] == 0
+
+
+def test_delay_is_only_applied_between_llm_cases(monkeypatch, batches):
+    """Pacing protects a free-tier rate limit; the offline column must stay fast."""
+    import src.eval.qa_runner as runner
+    from src.eval.qa_cases import QaCase
+
+    slept: list[float] = []
+    monkeypatch.setattr(runner.time, "sleep", lambda s: slept.append(s))
+
+    cases = [QaCase.model_validate(
+        {"case_id": f"p{i}", "class": "answerable",
+         "settlement_id": "setl_merchant_d2c_000", "question": "Where is my settlement?"}
+    ) for i in range(3)]
+
+    runner.run_column(cases, batches, use_llm=False, delay_seconds=5.0)
+    assert slept == [], "the deterministic column must never sleep"
+
+    runner.run_column(cases, batches, use_llm=True, delay_seconds=5.0)
+    assert slept == [5.0, 5.0], "sleep between cases, not after the last one"

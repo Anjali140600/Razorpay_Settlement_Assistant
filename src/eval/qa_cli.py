@@ -36,6 +36,13 @@ def main() -> None:
     parser.add_argument("--runs", type=int, default=3)
     parser.add_argument("--out-dir", type=Path, default=Path("sample-output"))
     parser.add_argument(
+        "--delay",
+        type=float,
+        default=3.0,
+        help="Seconds between LLM cases. Free tiers rate-limit per minute, and every "
+             "rate-limited case becomes a silent keyword answer.",
+    )
+    parser.add_argument(
         "--baseline-only",
         action="store_true",
         help="Score only the deterministic path; no provider key required.",
@@ -63,7 +70,10 @@ def main() -> None:
         ai_runs = [baseline]
         runs = 0
     else:
-        ai_runs = [run_qa_eval(batches, use_llm=True, cases=cases) for _ in range(args.runs)]
+        ai_runs = [
+            run_qa_eval(batches, use_llm=True, cases=cases, delay_seconds=args.delay)
+            for _ in range(args.runs)
+        ]
         runs = args.runs
 
     headline = worst_run(ai_runs)

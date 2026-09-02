@@ -9,6 +9,7 @@ agent whenever the LLM abstains or fails, so an unattributed 100% could be 100% 
 from __future__ import annotations
 
 import json
+import time
 from typing import Any
 
 from src.agent.evidence import SettlementEvidenceTools
@@ -175,10 +176,18 @@ def run_column(
     batches: dict[str, SettlementBatch],
     *,
     use_llm: bool,
+    delay_seconds: float = 0.0,
 ) -> list[dict[str, Any]]:
-    """Answer every case on one path and grade it."""
+    """Answer every case on one path and grade it.
+
+    `delay_seconds` paces LLM calls. Hammering a free tier trips a per-minute rate
+    limit, and every rate-limited case silently becomes a keyword answer — which
+    destroys the measurement rather than the service. Pacing buys a real number.
+    """
     rows: list[dict[str, Any]] = []
-    for case in cases:
+    for index, case in enumerate(cases):
+        if use_llm and delay_seconds and index:
+            time.sleep(delay_seconds)
         clear_llm_answer_cache()
         clear_guardrail_events()
         env = answer_free_text(case.question, case.settlement_id, batches, use_llm=use_llm)
@@ -197,7 +206,8 @@ def run_qa_eval(
     *,
     use_llm: bool,
     cases: list[QaCase] | None = None,
+    delay_seconds: float = 0.0,
 ) -> dict[str, Any]:
     cases = cases if cases is not None else load_qa_cases()
-    rows = run_column(cases, batches, use_llm=use_llm)
+    rows = run_column(cases, batches, use_llm=use_llm, delay_seconds=delay_seconds)
     return {"rows": rows, "metrics": aggregate(rows)}
