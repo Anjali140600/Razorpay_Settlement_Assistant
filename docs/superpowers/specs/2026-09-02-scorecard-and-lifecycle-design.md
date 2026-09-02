@@ -218,13 +218,17 @@ Five required cases:
 |---|---|
 | Exact corrective adjustment, explicit reference | `CLOSED_COMPENSATED` |
 | Adjustment for the wrong amount | stays `OPEN`, adjustment unmatched |
-| Two open exceptions with the same amount, one adjustment | stays `OPEN` (ambiguous) |
+| Two identical valid adjustments for one exception | stays `OPEN` (one-to-one fails) |
 | Adjustment with no resolvable reference | stays `OPEN`, adjustment unmatched |
 | Exception that never receives an adjustment | stays `OPEN` |
 
-Note the ambiguous row contributes **two** open exceptions, so the fixture holds six
-exceptions of which exactly one closes. Most stay open by design; the honest closure rate on
-this set is well under 50%, which is a far better story than 100%.
+Five exceptions, exactly one closes — a 20% closure rate. Most stay open by design, which is
+a far better story than 100%.
+
+The ambiguity case is deliberately the *duplicate-adjustment* kind rather than a shared-delta
+kind. Because predicate 5 below requires an exact reference, and a reference names exactly
+one settlement, a single adjustment can never match two *different* settlements' exceptions.
+The reachable ambiguity is Razorpay posting the same correction twice.
 
 The fixtures live under `data/fixtures/lifecycle/` and are read by the lifecycle runner from
 its own module-level path constant, exactly as `run_holdout_eval` reads `HOLDOUT_DIR`
@@ -316,7 +320,8 @@ merged with a `lifecycle_` prefix, following the holdout pattern at `src/engine.
 Matcher predicates are the core risk; they get the most tests.
 
 - Each of the six predicates rejected individually (six failing-binding tests).
-- All four negative fixture cases stay open.
+- All four negative fixture cases stay open (wrong amount, duplicate adjustments, no
+  reference, never adjusted).
 - The one positive case closes, with the correct `days_to_close`.
 - Ambiguity: two same-amount exceptions plus one adjustment binds **nothing**.
 - Exception IDs are stable across two runs over identical input.
