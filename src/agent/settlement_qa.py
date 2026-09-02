@@ -1267,9 +1267,10 @@ def _envelope_from_llm_content(
     why leaves the merchant staring at "Answered via rules" with no explanation.
     """
 
-    def reject(reason: str) -> None:
+    def reject(reason: str, category: str = "no_answer") -> None:
         if rejections is not None:
             rejections.append(f"{provider}: {reason}")
+        record_guardrail_event(category, reason)
 
     content = strip_reasoning(unwrap_model_answer(content))
     if not content:
@@ -1281,16 +1282,16 @@ def _envelope_from_llm_content(
     mentioned = re.findall(r"\b(?:setl|pay|rfnd|trf)_[a-z0-9_]+", content)
     invalid = validate_citations(mentioned, batches)
     if invalid:
-        reject(f"answer cited unknown id {invalid[0]}")
+        reject(f"answer cited unknown id {invalid[0]}", "bad_citation")
         return None
     if allowed_money is not None:
         money_fails = money_check_failures(content, allowed_money, money_roles or {})
         if money_fails:
-            reject(f"numeric check: {money_fails[0]}")
+            reject(f"numeric check: {money_fails[0]}", "wrong_amount")
             return None
     citations = list(dict.fromkeys(mentioned)) or ([settlement_id] if settlement_id else [])
     if not citations:
-        reject("answer cited no settlement or payment")
+        reject("answer cited no settlement or payment", "bad_citation")
         return None
     return AnswerEnvelope(
         answer_text=filter_response_text(content),
@@ -1388,6 +1389,28 @@ GROQ_BACKUP_MODELS = ("openai/gpt-oss-20b", "qwen/qwen3.6-27b")
 
 _LAST_LLM_ERROR: str | None = None
 
+# Structured siblings of _LAST_LLM_ERROR. The prose trace says an answer was repaired;
+# these say WHICH guardrail fired, which is the only way to count catches honestly.
+GUARDRAIL_CATEGORIES = ("wrong_amount", "bad_citation", "no_answer", "abstained")
+
+_GUARDRAIL_EVENTS: list[dict[str, str]] = []
+
+
+def record_guardrail_event(category: str, detail: str) -> None:
+    """Record that a deterministic guardrail rejected model output."""
+    if category not in GUARDRAIL_CATEGORIES:
+        raise ValueError(f"unknown guardrail category {category!r}")
+    _GUARDRAIL_EVENTS.append({"category": category, "detail": detail})
+
+
+def last_guardrail_events() -> list[dict[str, str]]:
+    """Guardrail rejections recorded while answering the most recent question."""
+    return [dict(e) for e in _GUARDRAIL_EVENTS]
+
+
+def clear_guardrail_events() -> None:
+    _GUARDRAIL_EVENTS.clear()
+
 
 def _iter_provider_models() -> Any:
     """Yield (provider, model) attempts, including Groq backup models."""
@@ -1465,6 +1488,7 @@ def _react_qa_llm(
 ) -> AnswerEnvelope | None:
     global _LAST_LLM_ERROR
     _LAST_LLM_ERROR = None
+    clear_guardrail_events()
     tools = SettlementEvidenceTools(batches)
     try:
         user_payload = _build_qa_user_payload(question, settlement_id, batches)
@@ -1592,6 +1616,9 @@ def _react_qa_llm(
                             )
                         invalid = validate_citations(citations, batches)
                         if invalid:
+                            record_guardrail_event(
+                                "bad_citation", f"cited unknown id {invalid[0]}"
+                            )
                             return AnswerEnvelope(
                                 answer_text=ABSTENTION_MSG,
                                 abstained=True,
@@ -1602,6 +1629,7 @@ def _react_qa_llm(
 
                         money_fails = money_check_failures(answer_text, allowed_money, roles)
                         if money_fails:
+                            record_guardrail_event("wrong_amount", money_fails[0])
                             failures.extend(f"numeric check: {m}" for m in money_fails)
                             env = _repair_plain_answer(
                                 client, model, messages, answer_text, money_fails[0],
