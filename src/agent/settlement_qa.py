@@ -166,6 +166,8 @@ _DATE_NUMERIC = re.compile(r"\b(\d{1,2})[/-](\d{1,2})(?:[/-](\d{2,4}))?\b")
 _AMOUNT_TOKEN = re.compile(r"₹?\s*(\d[\d,]*(?:\.\d{1,2})?)")
 _RUPEE_HINT = re.compile(r"\b(rs|inr|rupee|rupees|ruppee|ruppees)\b|₹", re.I)
 _PAISE_HINT = re.compile(r"\b(paise|paisa)\b", re.I)
+# Razorpay entity ids and UTRs carry digits that are indexes, not amounts.
+_ENTITY_TOKEN = re.compile(r"\b(?:pay|rfnd|trf|setl|adj)_[a-z0-9_]+\b|\bUTR[A-Z0-9]+\b", re.I)
 
 
 def sanitize_question(text: str) -> str:
@@ -228,6 +230,12 @@ def parse_amount_candidates(text: str) -> list[int]:
         for rx in (_DATE_DAY_MONTH, _DATE_MONTH_DAY, _DATE_ISO, _DATE_NUMERIC):
             for m in rx.finditer(text):
                 skip_spans.append(m.span())
+
+    # Digits anywhere inside an identifier are not money. The prefix check below only
+    # sees the 8 characters before a digit, so "pay_setl_tax_mismatch_1" used to yield
+    # one paisa and route the whole question to an amount lookup.
+    for m in _ENTITY_TOKEN.finditer(text):
+        skip_spans.append(m.span())
 
     for match in _AMOUNT_TOKEN.finditer(text):
         token_at = match.start(1)
