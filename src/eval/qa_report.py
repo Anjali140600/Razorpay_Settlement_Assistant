@@ -49,9 +49,21 @@ def provenance(cases_path: Path | None = None) -> dict[str, Any]:
     }
 
 
+def valid_runs(runs: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Runs where every case actually reached the provider."""
+    return [r for r in runs if not r["metrics"].get("qa_llm_unavailable")]
+
+
 def worst_run(runs: list[dict[str, Any]]) -> dict[str, Any]:
+    """The lowest-scoring CLEAN run, or the lowest overall if none were clean.
+
+    A run the provider partly refused is not a measurement of the model, so it must
+    not be eligible for the headline — otherwise a quota failure silently becomes the
+    published score, which is worse than reporting nothing.
+    """
+    candidates = valid_runs(runs) or runs
     return min(
-        runs,
+        candidates,
         key=lambda r: (
             r["metrics"].get("qa_pass_rate") or 0.0,
             -(r["metrics"].get("qa_unverified_amount_emissions") or 0),
@@ -94,11 +106,16 @@ def render_markdown(report: dict[str, Any]) -> str:
     b = report["deterministic_baseline"]
     only_baseline = bool(report.get("baseline_only"))
     runs = report.get("runs") or 0
-    published = (
-        "deterministic path only, no AI run"
-        if only_baseline
-        else f"worst of {runs} run(s)"
-    )
+    runs_valid = report.get("runs_valid")
+    if only_baseline:
+        published = "deterministic path only, no AI run"
+    elif runs_valid is not None and runs_valid < runs:
+        published = (
+            f"worst of {runs_valid} clean run(s), {runs} attempted "
+            f"({runs - runs_valid} invalidated by provider limits)"
+        )
+    else:
+        published = f"worst of {runs} clean run(s)"
     model_line = (
         "not used in this run"
         if only_baseline

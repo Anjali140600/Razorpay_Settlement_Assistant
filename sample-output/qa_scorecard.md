@@ -1,23 +1,24 @@
 # Q&A Trust Scorecard
 
 **Cases:** 41 hand-labeled  
-**Published figure:** deterministic path only, no AI run  
-**Model:** not used in this run  
-**Commit:** 3a22e98 · **Dataset:** `6e9fe2d829bb` · **Prompt:** `1a1601cd0287`  
-**Generated:** 2026-09-02T10:02:10Z
+**Published figure:** worst of 1 clean run(s), 3 attempted (2 invalidated by provider limits)  
+**Model:** groq / openai/gpt-oss-120b  
+**Commit:** 96856f4 · **Dataset:** `6e9fe2d829bb` · **Prompt:** `1a1601cd0287`  
+**Generated:** 2026-09-02T20:05:16Z
 
-> **The AI column was not measured in this run.** Only the deterministic
-> path was scored, so no figure here describes model behaviour.
-
-| Metric | Deterministic baseline |
-|---|---|
-| Pass rate | 82.9% |
-| Citation validity | 100.0% |
-| Correct abstention | 90.0% |
-| Refusal (system guardrail) | 75.0% |
-| Money exact | 63.6% |
-| **Unverified amounts emitted** | 0 |
-| Answered by rules | 41 |
+| Metric | Deterministic baseline | AI enabled (end to end) |
+|---|---|---|
+| Pass rate | 82.9% | 92.7% |
+| Citation validity | 100.0% | 100.0% |
+| Correct abstention | 90.0% | 90.0% |
+| Refusal (system guardrail) | 75.0% | 75.0% |
+| Money exact | 63.6% | 100.0% |
+| **Unverified amounts emitted** | 0 | 0 |
+| Answered by LLM | 0 | 26 |
+| Answered by rules | 41 | 15 |
+| Validator caught wrong amount | 0 | 12 |
+| Validator caught bad citation | 0 | 2 |
+| Provider unavailable on | — | 0 case(s) |
 
 ## How to read this
 
@@ -36,3 +37,10 @@
   assert that the citation semantically supports the sentence.
 - Unverified amounts are measured against the figures the evidence tools can
   produce for the case settlement plus every settlement the answer cited.
+
+## Cases that were not stable across runs
+
+- `money_b2b_fee`
+- `money_batch_gap`
+- `money_batch_total_fee`
+- `money_drift_gap`

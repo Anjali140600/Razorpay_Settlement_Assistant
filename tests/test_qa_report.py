@@ -128,3 +128,49 @@ def test_baseline_only_header_does_not_name_a_model_or_claim_runs():
     md = render_markdown(rep)
     assert "not used in this run" in md
     assert "worst of 0" not in md
+
+
+def run_with(unavailable, pass_rate, rows=None):
+    return {
+        "metrics": {"qa_pass_rate": pass_rate, "qa_unverified_amount_emissions": 0,
+                    "qa_llm_unavailable": unavailable, "qa_cases_total": 41},
+        "rows": rows or [],
+    }
+
+
+def test_valid_runs_excludes_provider_degraded_runs():
+    from src.eval.qa_report import valid_runs
+
+    runs = [run_with(0, 0.93), run_with(6, 0.90), run_with(35, 0.83)]
+    assert len(valid_runs(runs)) == 1
+
+
+def test_worst_run_ignores_degraded_runs_even_when_they_score_lower():
+    """A quota-killed run is not a measurement, so it cannot be the headline."""
+    from src.eval.qa_report import worst_run
+
+    runs = [run_with(0, 0.93), run_with(35, 0.83)]
+    assert worst_run(runs)["metrics"]["qa_pass_rate"] == 0.93
+
+
+def test_worst_run_picks_lowest_among_several_valid_runs():
+    from src.eval.qa_report import worst_run
+
+    runs = [run_with(0, 0.93), run_with(0, 0.88), run_with(35, 0.10)]
+    assert worst_run(runs)["metrics"]["qa_pass_rate"] == 0.88
+
+
+def test_worst_run_falls_back_when_no_run_was_clean():
+    from src.eval.qa_report import worst_run
+
+    runs = [run_with(35, 0.83), run_with(30, 0.85)]
+    assert worst_run(runs)["metrics"]["qa_pass_rate"] == 0.83
+
+
+def test_markdown_discloses_how_many_runs_were_valid():
+    rep = report_stub()
+    rep["runs"] = 3
+    rep["runs_valid"] = 1
+    md = render_markdown(rep)
+    assert "worst of 1 clean run" in md
+    assert "3 attempted" in md

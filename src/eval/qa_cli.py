@@ -24,6 +24,7 @@ from src.eval.qa_report import (
     ai_column_valid,
     flaky_cases,
     provenance,
+    valid_runs,
     worst_run,
     write_report,
 )
@@ -83,10 +84,14 @@ def main() -> None:
         "baseline_only": args.baseline_only,
         "headline": headline["metrics"],
         "ai_column_valid": ai_column_valid(headline["metrics"], runs=runs),
+        "runs_valid": len(valid_runs(ai_runs)) if runs else 0,
         "all_runs": [r["metrics"] for r in ai_runs],
         "deterministic_baseline": baseline["metrics"],
-        "flaky_cases": flaky_cases(ai_runs) if runs > 1 else [],
+        "flaky_cases": flaky_cases(valid_runs(ai_runs)) if runs > 1 else [],
         "headline_rows": headline["rows"],
+        # Every run's rows are retained so the headline can be re-selected later
+        # without spending another provider budget re-measuring.
+        "all_run_rows": [r["rows"] for r in ai_runs],
         "baseline_rows": baseline["rows"],
     }
     js, md = write_report(report, args.out_dir)
