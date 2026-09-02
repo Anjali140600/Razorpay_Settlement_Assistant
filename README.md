@@ -44,8 +44,27 @@ Open http://localhost:8501
 - **6 intentional failures** — tax, batch, refund, transfer, semantic errors exported honestly
 - **Independent holdout** — 8 hand-crafted settlements separate from generator (`docs/dataset-realism.md`)
 - **Tax-line pass rate** · **Throughput** · **Full exception export**
+- **Q&A trust scorecard** — 41 hand-labeled questions scored on both answer paths, worst
+  of N runs published. See [sample-output/qa_scorecard.md](sample-output/qa_scorecard.md).
+- **Exception closure rate** — measured on hand-written two-cycle fixtures. Most
+  exceptions stay open by design; only an exact, uniquely-referenced adjustment closes one.
 
-See [docs/dataset-realism.md](docs/dataset-realism.md) for what we claim vs what we don't.
+**Historical integrity is immutable.** A later Razorpay adjustment compensates cash; it
+never makes a failed control pass. `settlement_integrity_rate` and
+`lifecycle_closure_rate` are separate metrics that never mix, and a test enforces it.
+
+See [docs/dataset-realism.md](docs/dataset-realism.md) for what we claim vs what we don't,
+and [docs/metric-contracts.md](docs/metric-contracts.md) for what each metric does *not* claim.
+
+## Measuring the agent
+
+```bash
+python -m src.eval.qa_cli --baseline-only      # deterministic path, no API key
+python -m src.eval.qa_cli --runs 3             # both columns, needs a provider key
+```
+
+The scorecard refuses to present the AI column as a model measurement when the provider
+was unavailable, so a quota-exhausted run cannot be published as model performance.
 
 ## Three demo paths
 
