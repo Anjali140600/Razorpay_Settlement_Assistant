@@ -29,6 +29,7 @@ from src.domain.models import (
     SettlementStatus,
 )
 from src.eval.holdout_runner import run_holdout_eval
+from src.lifecycle.runner import run_lifecycle_eval
 
 
 class ReconciliationEngine:
@@ -110,6 +111,13 @@ class ReconciliationEngine:
 
         holdout = run_holdout_eval()
 
+        # Cross-settlement stage. A corrective adjustment necessarily lives in a
+        # different settlement than the exception it compensates, so it cannot be
+        # matched inside the per-settlement loop above. Closure is reported alongside
+        # settlement_integrity_rate and never folded into it: a later adjustment
+        # compensates cash, it does not make an earlier failed control pass.
+        lifecycle = run_lifecycle_eval()
+
         run.metrics = {
             "total_recon_lines": total_lines,
             "total_payment_lines": total_lines,
@@ -133,6 +141,7 @@ class ReconciliationEngine:
             "throughput_lines_per_sec": round(total_lines / elapsed, 1) if elapsed > 0 else 0,
             "false_auto_closes": 0,
             **{k: holdout[k] for k in holdout if k.startswith("holdout_")},
+            **{k: lifecycle[k] for k in lifecycle if k.startswith("lifecycle_")},
         }
 
         run.runtime_seconds = elapsed
