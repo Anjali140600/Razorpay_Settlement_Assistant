@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import json
+import re
 import sys
+import time
 from datetime import date
 from pathlib import Path
 
@@ -305,102 +307,171 @@ CSS = """
     border-color: var(--card-border) !important;
   }
 
-  .chat-layout {
+  /* ---------- Settlement assistant ---------- */
+
+  .chat-header {
     display: flex;
-    gap: 1rem;
-    align-items: stretch;
-    min-height: 420px;
+    align-items: center;
+    gap: 0.8rem;
   }
 
-  .suggestion-menu {
-    flex: 0 0 220px;
-    background: #f8fafc;
-    border: 1px solid var(--card-border);
-    border-radius: 12px;
-    padding: 0.85rem;
-  }
-
-  .suggestion-menu-title {
-    font-size: 0.78rem;
+  .chat-avatar {
+    flex: 0 0 44px;
+    width: 44px;
+    height: 44px;
+    border-radius: 13px;
+    background: linear-gradient(135deg, #1e3a5f 0%, #2563eb 100%);
+    color: #ffffff;
+    font-size: 1.15rem;
     font-weight: 700;
-    color: var(--text-muted);
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-    margin: 0 0 0.65rem 0.15rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 2px 8px rgba(37, 99, 235, 0.28);
   }
 
-  .suggestion-item {
-    display: block;
-    width: 100%;
-    text-align: left;
-    padding: 0.7rem 0.85rem;
-    margin-bottom: 0.45rem;
-    border-radius: 10px;
-    border: 1px solid #e2e8f0;
-    background: #ffffff;
-    color: var(--text-primary);
-    font-size: 0.95rem;
-    font-weight: 600;
-    line-height: 1.35;
-    cursor: pointer;
-    transition: background 0.15s, border-color 0.15s;
+  .chat-name {
+    font-size: 1.08rem !important;
+    font-weight: 700 !important;
+    line-height: 1.3 !important;
+    margin: 0 !important;
   }
 
-  .suggestion-item:hover {
-    background: var(--accent-soft);
-    border-color: #93c5fd;
+  .chat-presence {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.88rem !important;
+    color: var(--text-muted) !important;
+    margin: 0.15rem 0 0 !important;
   }
 
-  .chat-panel {
-    flex: 1;
-    min-width: 0;
-    background: linear-gradient(180deg, #fffbeb 0%, #fef3c7 100%);
-    border: 1px solid #fcd34d;
-    border-radius: 12px;
-    padding: 0.85rem 1rem 0.65rem;
-    min-height: 380px;
+  .presence-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #10b981;
+    box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.18);
   }
 
-  /* Yellow chat shell (Streamlit bordered container wrapping messages + input) */
-  div[data-testid="stVerticalBlockBorderWrapper"]:has(div[data-testid="stChatInput"]) {
-    background: linear-gradient(180deg, #fffbeb 0%, #fef3c7 100%) !important;
-    border: 1px solid #fcd34d !important;
-    border-radius: 12px !important;
-    padding: 0.85rem 1rem 0.65rem !important;
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6) !important;
-  }
-
-  div[data-testid="stVerticalBlockBorderWrapper"]:has(div[data-testid="stChatInput"]) div[data-testid="stChatMessage"] {
-    background: transparent !important;
-  }
-
-  div[data-testid="stVerticalBlockBorderWrapper"]:has(div[data-testid="stChatInput"])
-    div[data-testid="stChatMessageContent"] {
-    background: #ffffff !important;
-    border: 1px solid #fde68a !important;
-    border-radius: 10px !important;
-    box-shadow: 0 1px 2px rgba(180, 83, 9, 0.06) !important;
-  }
-
-  div[data-testid="stVerticalBlockBorderWrapper"]:has(div[data-testid="stChatInput"])
-    div[data-testid="stChatInput"] > div {
-    background: #fffef5 !important;
-    border-color: #fbbf24 !important;
+  /* Conversation thread */
+  div[class*="st-key-chat_thread"] {
+    background: #f8fafc !important;
+    border: 1px solid #e2e8f0 !important;
+    border-radius: 14px !important;
+    padding: 0.7rem 0.9rem !important;
+    box-shadow: inset 0 1px 2px rgba(15, 23, 42, 0.05) !important;
   }
 
   div[data-testid="stChatMessage"] {
+    background: transparent !important;
+    padding: 0.15rem 0 !important;
+    gap: 0.6rem !important;
     font-size: 1rem !important;
     line-height: 1.6 !important;
   }
 
   div[data-testid="stChatMessage"] [data-testid="stMarkdownContainer"] p {
-    margin-bottom: 0.35rem !important;
+    margin-bottom: 0.3rem !important;
   }
 
-  .chat-meta {
-    margin-top: 0.35rem;
+  div[data-testid="stChatMessageAvatarCustom"] {
+    background: linear-gradient(135deg, #1e3a5f 0%, #2563eb 100%) !important;
+    color: #ffffff !important;
+    border: none !important;
+  }
+
+  div[data-testid="stChatMessageAvatarUser"] {
+    background: #dbeafe !important;
+    color: #1d4ed8 !important;
+    border: none !important;
+  }
+
+  /* Assistant bubble */
+  div[data-testid="stChatMessage"]:has(div[data-testid="stChatMessageAvatarCustom"])
+    div[data-testid="stChatMessageContent"] {
+    width: fit-content;
+    max-width: 90%;
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 4px 14px 14px 14px;
+    padding: 0.75rem 1rem;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05);
+  }
+
+  /* User bubble, mirrored to the right */
+  div[data-testid="stChatMessage"]:has(div[data-testid="stChatMessageAvatarUser"]) {
+    flex-direction: row-reverse !important;
+  }
+
+  div[data-testid="stChatMessage"]:has(div[data-testid="stChatMessageAvatarUser"])
+    div[data-testid="stChatMessageContent"] {
+    width: fit-content;
+    max-width: 82%;
+    margin-left: auto;
+    background: var(--accent);
+    border-radius: 14px 4px 14px 14px;
+    padding: 0.7rem 1rem;
+    box-shadow: 0 1px 3px rgba(37, 99, 235, 0.25);
+  }
+
+  div[data-testid="stChatMessage"]:has(div[data-testid="stChatMessageAvatarUser"])
+    div[data-testid="stChatMessageContent"] p {
+    color: #ffffff !important;
+  }
+
+  /* Thinking / evidence panel inside a message */
+  div[data-testid="stChatMessage"] div[data-testid="stExpander"] details {
+    background: #f8fafc !important;
+    border: 1px solid #e2e8f0 !important;
+    border-radius: 10px !important;
+  }
+
+  div[data-testid="stChatMessage"] div[data-testid="stExpander"] details summary {
+    font-size: 0.92rem !important;
+    font-weight: 600 !important;
+    color: var(--text-secondary) !important;
+  }
+
+  div[data-testid="stChatMessage"] div[data-testid="stExpander"] [data-testid="stMarkdownContainer"] p {
+    font-size: 0.94rem !important;
+    color: var(--text-secondary) !important;
+  }
+
+  /* Quick-reply chips */
+  div[class*="st-key-chip_"] button {
+    min-height: 2.2rem !important;
+    padding: 0.35rem 0.9rem !important;
+    border-radius: 999px !important;
+    background: #ffffff !important;
+    border: 1px solid var(--card-border) !important;
+    color: #1e3a5f !important;
+    font-size: 0.93rem !important;
+    font-weight: 600 !important;
+  }
+
+  div[class*="st-key-chip_"] button:hover {
+    background: var(--accent-soft) !important;
+    border-color: #93c5fd !important;
+    color: #1d4ed8 !important;
+  }
+
+  /* Composer */
+  div[data-testid="stChatInput"] {
+    border-radius: 12px !important;
+    border: 1px solid var(--card-border) !important;
+    background: #ffffff !important;
+  }
+
+  div[data-testid="stChatInput"]:focus-within {
+    border-color: var(--accent) !important;
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12) !important;
+  }
+
+  .chat-hint {
     font-size: 0.88rem;
-    color: var(--text-muted);
+    color: var(--text-muted) !important;
+    margin: 0.5rem 0 0 !important;
   }
 </style>
 """
@@ -481,10 +552,31 @@ def agent_mode_badge(mode: str) -> str:
     return f'<span class="badge {css}">{label}</span>'
 
 
+ASSISTANT_AVATAR = ":material/support_agent:"
+STEP_PACING_SECONDS = 0.18
+STREAM_WORD_DELAY = 0.014
+
 WELCOME_MESSAGE = (
-    "Hi — I'm your settlement assistant. Pick a suggested question on the left, "
-    "or type your own below. I only answer from your loaded Razorpay data."
+    "Hi — I'm your settlement assistant.\n\n"
+    "Ask me why your payout differs from your sales, how fees and GST were charged, "
+    "or whether this settlement adds up. I answer only from your Razorpay settlement "
+    "data and show the evidence behind every answer."
 )
+
+TOOL_STEP_LABELS = {
+    "fetch_settlement": "Read the settlement header and UTR",
+    "fetch_recon_lines": "Pulled every recon line in this batch",
+    "calculate_batch": "Recomputed batch totals from the recon lines",
+    "explain_fee_tax": "Checked fee and GST on each payment line",
+    "search_settlements": "Searched your settlements",
+    "search_by_amount": "Searched settlements and payments by amount",
+    "search_by_date": "Searched settlements by date",
+    "get_policy": "Applied the settlement verification policy",
+    "support_guidance": "Checked what support can do here",
+    "escalate_to_support": "Prepared a support escalation",
+    "finish_answer": "Wrote the answer from the evidence",
+    "plain_text_answer": "Wrote the answer from the evidence",
+}
 
 
 def get_chat_history(settlement_id: str) -> list[dict]:
@@ -500,11 +592,23 @@ def append_chat_message(settlement_id: str, role: str, content: str, meta: dict 
     get_chat_history(settlement_id).append({"role": role, "content": content, "meta": meta or {}})
 
 
+def ticket_offer_pending(settlement_id: str) -> bool:
+    """True when our last reply offered the Raise-ticket button and it is still unused."""
+    if settlement_id in st.session_state["raised_tickets"]:
+        return False
+    for msg in reversed(get_chat_history(settlement_id)):
+        if msg["role"] != "assistant":
+            continue
+        return bool((msg.get("meta") or {}).get("offer_raise_ticket"))
+    return False
+
+
 def envelope_to_meta(ans, *, ai_requested: bool = False) -> dict:
     mode = getattr(ans, "agent_mode", "keyword")
     return {
         "agent_mode": mode,
         "escalated_to_support": getattr(ans, "escalated_to_support", False),
+        "offer_raise_ticket": getattr(ans, "offer_raise_ticket", False),
         "support_ticket_id": getattr(ans, "support_ticket_id", None),
         "citations": getattr(ans, "citations", None) or [],
         "tool_trace": getattr(ans, "tool_trace", None),
@@ -513,76 +617,201 @@ def envelope_to_meta(ans, *, ai_requested: bool = False) -> dict:
     }
 
 
-def ask_settlement_question(
+def apply_raised_ticket(settlement_id: str, decision, batches: dict) -> None:
+    """Raise one ticket and keep the header + chat buttons in the same state."""
+    ticket_env = raise_support_ticket(settlement_id, decision, batches)
+    st.session_state["raised_tickets"][settlement_id] = ticket_env
+    append_chat_message(
+        settlement_id,
+        "assistant",
+        ticket_env.answer_text,
+        envelope_to_meta(ticket_env),
+    )
+    st.rerun()
+
+
+def render_raise_ticket_button(settlement_id: str, decision, batches: dict, key: str) -> None:
+    if st.button("Raise ticket with Razorpay support", type="primary", key=key, width="stretch"):
+        apply_raised_ticket(settlement_id, decision, batches)
+
+
+def render_ticket_cta(meta: dict, settlement_id: str, decision, batches: dict, key: str) -> None:
+    if not meta.get("offer_raise_ticket") or not needs_support_ticket(decision):
+        return
+    raised = st.session_state["raised_tickets"].get(settlement_id)
+    if raised:
+        st.markdown(
+            f'<div class="ticket-raised">Ticket raised — <code>{raised.support_ticket_id}</code></div>',
+            unsafe_allow_html=True,
+        )
+        return
+    render_raise_ticket_button(settlement_id, decision, batches, key)
+
+
+def resolve_answer(
     settlement_id: str,
     question: str,
-    *,
-    preset_id: str | None = None,
-    decision=None,
-    batches: dict | None = None,
-) -> None:
-    """Append user + assistant messages to the settlement chat thread."""
-    if st.session_state["qa_count"] >= MAX_QUESTIONS_PER_SESSION:
-        return
+    preset_id: str | None,
+    decision,
+    batches: dict,
+) -> tuple[str, dict]:
+    """Run the Q&A pipeline and return the merchant-facing answer plus its metadata."""
+    if preset_id:
+        ans = answer_preset(preset_id, settlement_id, batches)
+        return filter_response_text(ans.answer_text), envelope_to_meta(ans)
 
-    batches = batches or engine.batch_map()
+    ok, err = validate_question_input(question)
+    if not ok:
+        return err, {"abstained": True, "agent_mode": "keyword"}
+
     raised_ticket_id = (
         st.session_state["raised_tickets"][settlement_id].support_ticket_id
         if settlement_id in st.session_state["raised_tickets"]
         else None
     )
-
-    append_chat_message(settlement_id, "user", question)
-
-    if preset_id:
-        ans = answer_preset(preset_id, settlement_id, batches)
-    else:
-        ok, err = validate_question_input(question)
-        if not ok:
-            append_chat_message(settlement_id, "assistant", err, {"abstained": True})
-            return
-        ans = answer_free_text(
-            question,
-            settlement_id,
-            batches,
-            use_llm=st.session_state["use_llm_qa"],
-            settlement_decision=decision,
-            raised_ticket_id=raised_ticket_id,
-        )
-        _ = question_hash(sanitize_question(question))
-
-    text = filter_response_text(ans.answer_text)
-    ai_requested = not preset_id and bool(st.session_state["use_llm_qa"])
-    append_chat_message(
-        settlement_id, "assistant", text, envelope_to_meta(ans, ai_requested=ai_requested)
+    ans = answer_free_text(
+        question,
+        settlement_id,
+        batches,
+        use_llm=st.session_state["use_llm_qa"],
+        settlement_decision=decision,
+        raised_ticket_id=raised_ticket_id,
+        ticket_offer_pending=ticket_offer_pending(settlement_id),
     )
-    st.session_state["qa_count"] += 1
+    _ = question_hash(sanitize_question(question))
+    ai_requested = bool(st.session_state["use_llm_qa"])
+    return filter_response_text(ans.answer_text), envelope_to_meta(ans, ai_requested=ai_requested)
 
 
-def render_chat_message(msg: dict) -> None:
-    with st.chat_message(msg["role"]):
+def planned_steps(preset_id: str | None, use_llm: bool) -> list[str]:
+    """Work the assistant is about to do, shown live so the wait is explainable."""
+    steps = [
+        ":material/receipt_long: Opening the settlement header and UTR",
+        ":material/calculate: Recomputing the batch total from recon lines",
+    ]
+    if preset_id in (None, "why_net_less", "breakdown_fees", "is_consistent"):
+        steps.append(":material/percent: Checking fee and GST on every payment line")
+    steps.append(
+        ":material/smart_toy: Asking the AI model to phrase the verified figures"
+        if use_llm
+        else ":material/rule: Writing the answer from the verified figures"
+    )
+    return steps
+
+
+def humanize_trace_step(step: str) -> str | None:
+    """Turn an internal trace entry into a line a merchant can read."""
+    if step.startswith("provider=") or step.startswith("model="):
+        return None
+    name = step.split(": ", 1)[-1].strip()
+    return TOOL_STEP_LABELS.get(name)
+
+
+def stream_words(text: str):
+    for token in re.split(r"(\s+)", text):
+        if not token:
+            continue
+        yield token
+        if token.strip():
+            time.sleep(STREAM_WORD_DELAY)
+
+
+def render_message_meta(meta: dict, *, show_trace: bool = True) -> None:
+    if meta.get("welcome"):
+        return
+    badges = agent_mode_badge(meta.get("agent_mode", "keyword"))
+    if meta.get("escalated_to_support"):
+        badges += '<span class="badge badge-escalated">Escalated to Razorpay support</span>'
+    st.markdown(badges, unsafe_allow_html=True)
+    if meta.get("support_ticket_id"):
+        st.markdown(f"**Ticket ID:** `{meta['support_ticket_id']}`")
+    if meta.get("citations"):
+        st.caption(f"Evidence: {', '.join(meta['citations'])}")
+    if meta.get("fallback_reason"):
+        st.caption(
+            f"AI answer not used — {meta['fallback_reason']}. "
+            "Answered from your settlement data using rules."
+        )
+    if show_trace and meta.get("tool_trace"):
+        with st.expander("How this answer was built", icon=":material/manage_search:"):
+            for step in meta["tool_trace"]:
+                st.text(step)
+
+
+def render_chat_message(
+    msg: dict,
+    *,
+    settlement_id: str,
+    decision,
+    batches: dict,
+    msg_idx: int,
+) -> None:
+    is_assistant = msg["role"] == "assistant"
+    with st.chat_message(msg["role"], avatar=ASSISTANT_AVATAR if is_assistant else None):
         st.markdown(msg["content"])
         meta = msg.get("meta") or {}
-        if meta.get("welcome"):
-            return
-        badges = agent_mode_badge(meta.get("agent_mode", "keyword"))
-        if meta.get("escalated_to_support"):
-            badges += '<span class="badge badge-escalated">Escalated to Razorpay support</span>'
-        if badges:
-            st.markdown(badges, unsafe_allow_html=True)
-        if meta.get("support_ticket_id"):
-            st.markdown(f"**Ticket ID:** `{meta['support_ticket_id']}`")
-        if meta.get("citations"):
-            st.caption(f"Cited: {', '.join(meta['citations'])}")
-        if meta.get("fallback_reason"):
-            st.caption(
-                f"AI answer not used — {meta['fallback_reason']}. "
-                "Answered from your settlement data using rules."
+        if is_assistant:
+            render_message_meta(meta)
+            render_ticket_cta(
+                meta,
+                settlement_id,
+                decision,
+                batches,
+                key=f"raise_ticket_chat_{settlement_id}_{msg_idx}",
             )
-        if meta.get("tool_trace"):
-            with st.expander("How this answer was built"):
-                for step in meta["tool_trace"]:
-                    st.text(step)
+
+
+def run_live_exchange(
+    settlement_id: str,
+    question: str,
+    preset_id: str | None,
+    decision,
+    batches: dict,
+) -> None:
+    """Show the question, the assistant's working steps, then stream the answer."""
+    append_chat_message(settlement_id, "user", question)
+    with st.chat_message("user"):
+        st.markdown(question)
+
+    use_llm = bool(st.session_state["use_llm_qa"]) and not preset_id
+
+    with st.chat_message("assistant", avatar=ASSISTANT_AVATAR):
+        started = time.perf_counter()
+        status = st.status("Checking your settlement data…", expanded=True)
+        with status:
+            for step in planned_steps(preset_id, use_llm):
+                st.markdown(step)
+                time.sleep(STEP_PACING_SECONDS)
+
+        with st.skeleton(height=72):
+            text, meta = resolve_answer(settlement_id, question, preset_id, decision, batches)
+
+        with status:
+            done = [
+                label
+                for label in (humanize_trace_step(s) for s in meta.get("tool_trace") or [])
+                if label
+            ]
+            for label in dict.fromkeys(done):
+                st.markdown(f":material/check_circle: {label}")
+        status.update(
+            label=f"Checked your settlement data in {time.perf_counter() - started:.1f}s",
+            state="complete",
+            expanded=False,
+        )
+
+        st.write_stream(stream_words(text))
+        render_message_meta(meta, show_trace=False)
+        render_ticket_cta(
+            meta,
+            settlement_id,
+            decision,
+            batches,
+            key=f"raise_ticket_live_{settlement_id}_{st.session_state['qa_count']}",
+        )
+
+    append_chat_message(settlement_id, "assistant", text, meta)
+    st.session_state["qa_count"] += 1
 
 
 def render_settlement_chatbot(
@@ -590,61 +819,87 @@ def render_settlement_chatbot(
     decision,
     batches: dict,
 ) -> None:
-    """Chatbot UI: vertical suggestion menu + conversation thread."""
-    st.markdown('<p class="section-label">Settlement assistant</p>', unsafe_allow_html=True)
-    st.caption("Ask about fees, net amount, or consistency — answers use your settlement data only.")
+    """Chat surface: agent header, scrollable thread, quick replies, composer."""
+    identity, actions = st.columns([4, 1], vertical_alignment="center")
+    with identity:
+        st.markdown(
+            '<div class="chat-header">'
+            '<div class="chat-avatar">₹</div>'
+            "<div>"
+            '<p class="chat-name">Settlement assistant</p>'
+            '<p class="chat-presence"><span class="presence-dot"></span>'
+            "Online · answers only from your Razorpay settlement data</p>"
+            "</div></div>",
+            unsafe_allow_html=True,
+        )
+    with actions:
+        if st.button(
+            "New chat",
+            icon=":material/refresh:",
+            key=f"reset_chat_{settlement_id}",
+            width="stretch",
+        ):
+            st.session_state.get("chat_histories", {}).pop(settlement_id, None)
+            st.rerun()
 
-    menu_col, chat_col = st.columns([1, 2.6], gap="medium")
+    thread = st.container(height=430, border=True, key="chat_thread")
 
-    with menu_col:
-        st.markdown('<p class="suggestion-menu-title">Suggested questions</p>', unsafe_allow_html=True)
-        ask_disabled = st.session_state["qa_count"] >= MAX_QUESTIONS_PER_SESSION
-        if ask_disabled:
-            st.caption(f"Limit reached ({MAX_QUESTIONS_PER_SESSION}/session). Refresh to reset.")
+    # MAX_QUESTIONS_PER_SESSION == 0 disables the cap (see settlement_qa).
+    asked_out = (
+        MAX_QUESTIONS_PER_SESSION > 0
+        and st.session_state["qa_count"] >= MAX_QUESTIONS_PER_SESSION
+    )
+    pending: tuple[str, str | None] | None = None
 
+    with st.container(horizontal=True, gap="small"):
         for preset_id, preset in PRESET_INTENTS.items():
             if st.button(
                 preset["label"],
-                key=f"suggest_{settlement_id}_{preset_id}",
-                width="stretch",
-                disabled=ask_disabled,
+                key=f"chip_{settlement_id}_{preset_id}",
+                disabled=asked_out,
             ):
-                st.session_state["pending_chat_question"] = {
-                    "settlement_id": settlement_id,
-                    "question": preset["label"],
-                    "preset_id": preset_id,
-                }
-                st.rerun()
+                pending = (preset["label"], preset_id)
 
-    with chat_col:
-        with st.container(border=True):
-            history = get_chat_history(settlement_id)
-            for msg in history:
-                render_chat_message(msg)
+    prompt = st.chat_input(
+        "Ask about this settlement…",
+        key=f"chat_input_{settlement_id}",
+        disabled=asked_out,
+        submit_mode="disable",
+    )
+    if prompt and pending is None:
+        pending = (prompt, None)
 
-            pending = st.session_state.pop("pending_chat_question", None)
-            if pending and pending.get("settlement_id") == settlement_id:
-                ask_settlement_question(
-                    settlement_id,
-                    pending["question"],
-                    preset_id=pending.get("preset_id"),
-                    decision=decision,
-                    batches=batches,
-                )
-                st.rerun()
+    if asked_out:
+        st.markdown(
+            f'<p class="chat-hint">Question limit reached '
+            f"({MAX_QUESTIONS_PER_SESSION} per session). Refresh the page to reset.</p>",
+            unsafe_allow_html=True,
+        )
+    elif MAX_QUESTIONS_PER_SESSION > 0:
+        left = MAX_QUESTIONS_PER_SESSION - st.session_state["qa_count"]
+        st.markdown(
+            f'<p class="chat-hint">{left} of {MAX_QUESTIONS_PER_SESSION} questions left '
+            "this session · every answer cites the settlement data it used</p>",
+            unsafe_allow_html=True,
+        )
+    else:
+        st.markdown(
+            '<p class="chat-hint">Every answer cites the settlement data it used</p>',
+            unsafe_allow_html=True,
+        )
 
-            if prompt := st.chat_input(
-                "Ask about this settlement…",
-                key=f"chat_input_{settlement_id}",
-                disabled=ask_disabled,
-            ):
-                ask_settlement_question(
-                    settlement_id,
-                    prompt,
-                    decision=decision,
-                    batches=batches,
-                )
-                st.rerun()
+    with thread:
+        for idx, msg in enumerate(get_chat_history(settlement_id)):
+            render_chat_message(
+                msg,
+                settlement_id=settlement_id,
+                decision=decision,
+                batches=batches,
+                msg_idx=idx,
+            )
+        if pending:
+            run_live_exchange(settlement_id, pending[0], pending[1], decision, batches)
+            st.rerun()
 
 
 st.set_page_config(page_title="Razorpay Settlement Assistant", page_icon="₹", layout="wide")
@@ -780,17 +1035,12 @@ if selected_id:
                 "</div>",
                 unsafe_allow_html=True,
             )
-            if st.button("Raise ticket with Razorpay support", type="primary", width="stretch"):
-                ticket_env = raise_support_ticket(selected_id, decision, batches)
-                st.session_state["raised_tickets"][selected_id] = ticket_env
-                append_chat_message(
-                    selected_id,
-                    "assistant",
-                    f"Support ticket raised — `{ticket_env.support_ticket_id}`. "
-                    "Razorpay will investigate the calculation issue shown above.",
-                    envelope_to_meta(ticket_env),
-                )
-                st.rerun()
+            render_raise_ticket_button(
+                selected_id,
+                decision,
+                batches,
+                key=f"raise_ticket_header_{selected_id}",
+            )
         elif raised:
             st.markdown(
                 '<div class="support-panel">'
@@ -855,10 +1105,49 @@ with st.expander("Download report", expanded=False):
         st.markdown("Holdout exceptions")
         st.dataframe(holdout_exc, width="stretch", hide_index=True)
 
+    st.markdown("#### Exception lifecycle")
+    st.caption(
+        "Historical integrity never changes — a control that failed, failed. Closure "
+        "tracks only whether Razorpay later compensated the gap with an adjustment."
+    )
+    lc1, lc2, lc3 = st.columns(3)
+    lc1.metric("Exceptions closed", metrics.get("lifecycle_exceptions_closed", 0))
+    lc2.metric("Still open", metrics.get("lifecycle_exceptions_open", 0))
+    closure = metrics.get("lifecycle_closure_rate")
+    lc3.metric("Closure rate", f"{closure:.1%}" if closure is not None else "n/a")
+
+    lifecycle_rows = metrics.get("lifecycle_rows", [])
+    if lifecycle_rows:
+        st.dataframe(
+            [
+                {
+                    "Settlement": r["settlement_id"],
+                    "Gap": r["delta_display"],
+                    "State": getattr(r["state"], "value", r["state"]),
+                    "Matched adjustment": r["matched_adjustment"] or "—",
+                    "Days to close": r["days_to_close"] or "—",
+                    "Evidence": r["dispute_packet"]["evidence_hash"],
+                }
+                for r in lifecycle_rows
+            ],
+            width="stretch",
+            hide_index=True,
+        )
+    unmatched = metrics.get("lifecycle_unmatched_adjustments", [])
+    if unmatched:
+        st.caption(
+            "Adjustments received but not bound to any exception: "
+            f"{', '.join(unmatched)}. Nothing is bound unless the amount, direction, "
+            "timing, and settlement reference all match exactly and uniquely."
+        )
+
     st.metric("Throughput", f"{metrics.get('throughput_lines_per_sec', 0)} lines/s")
     if exceptions:
         st.dataframe(exceptions, width="stretch", hide_index=True)
 
-    SAMPLE_OUTPUT.mkdir(exist_ok=True)
-    (SAMPLE_OUTPUT / "latest_run.json").write_text(json.dumps(export, indent=2, default=str))
-    (SAMPLE_OUTPUT / "cli_run.json").write_text(json.dumps(export, indent=2, default=str))
+    if st.button("Export run JSON to sample-output/", key="export_run_json"):
+        SAMPLE_OUTPUT.mkdir(exist_ok=True)
+        (SAMPLE_OUTPUT / "latest_run.json").write_text(
+            json.dumps(export, indent=2, default=str)
+        )
+        st.success("Wrote sample-output/latest_run.json")
