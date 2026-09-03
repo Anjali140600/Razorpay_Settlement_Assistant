@@ -73,6 +73,25 @@ class SettlementLine(BaseModel):
     reference_settlement_id: str | None = None
 
 
+class PendingPayment(BaseModel):
+    """A payment that has been captured but has no settlement yet.
+
+    Deliberately separate from SettlementLine: it has no batch, no UTR, no
+    fee/tax lines, and no triage verdict — it is a different shape of fact,
+    not a SettlementLine with fields missing.
+    """
+
+    entity_id: str
+    order_id: str | None = None
+    amount: int  # paise
+    currency: str = "INR"
+    method: str | None = None
+    captured_at: datetime
+    cycle_type: str = "standard"  # "standard" | "instant_eligible"
+    instant_eligible: str = "unknown"  # "yes" | "no" | "unknown" — never inferred, always read from source data
+    expected_settlement_at: date | None = None
+
+
 class SettlementBatch(BaseModel):
     settlement_id: str
     amount: int  # net settlement in paise
@@ -167,6 +186,26 @@ class AnswerEnvelope(BaseModel):
     settlement_id: str | None = None
     tool_trace: list[str] = Field(default_factory=list)
     agent_mode: str = "keyword"
+    # Query triage — set whenever a settlement-scoped answer was classified.
+    triage_verdict: str = ""
+    offer_compensation: bool = False
+    compensation_amount_display: str | None = None
+    compensation_claim_id: str | None = None
+
+
+class CompensationClaim(BaseModel):
+    """A merchant-consented claim for a provable shortfall, filed to Razorpay support.
+
+    Never a ledger write and never automatic — the agent can only reach this after an
+    explicit consent turn on an AUTO_COMPENSABLE triage verdict.
+    """
+
+    claim_id: str
+    settlement_id: str
+    exception_id: str
+    amount_paise: int
+    evidence_hash: str
+    citations: list[str] = Field(default_factory=list)
 
 
 class ProposedAction(BaseModel):
