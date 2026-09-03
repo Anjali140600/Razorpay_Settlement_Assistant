@@ -20,6 +20,47 @@ This still does not make every AI sentence 100% correct. A real amount could app
 
 Other failures included a retired Groq model, provider-specific tool-call errors, reasoning models stopping without a final answer, free-tier rate limits, and a test-oriented first UI. We added current-model failover, provider compatibility handling, visible rules fallback, bounded read-only tools, abstention on missing evidence, and a merchant-first interface.
 
+Two things then changed the submission, and both were built **because** the failure above
+made us distrust our own claims.
+
+**First, we stopped asserting that the AI is safe and started measuring it.** A scorecard
+of 41 hand-labeled questions scores the agent on both answer paths. Measured: money
+accuracy rises from **63.6% to 100%** when the AI path is enabled, **zero unverified
+amounts** reach the merchant, and the deterministic validator caught **12 attempts by the
+model to state a wrong rupee figure**. That last number is the honest one. The AI is not
+correct because we prompted it well; it is safe because the guard in front of it works and
+we can count the times it fired.
+
+Building it exposed four real defects we had been shipping blind. The money guard matched
+the `₹` symbol only, so `Rs 999.00` and `INR 999` walked straight past the invented-amount
+check — every earlier safety claim rested on that hole. Digits inside an entity id were
+read as money, so asking about `pay_setl_tax_mismatch_1` parsed as ₹0.01 and mis-routed
+the question. An "AI enabled" run scored identically to the rules baseline because 34 of
+41 answers had silently fallen back to rules, so we made per-case attribution mandatory.
+And a scorecard generated while our provider quota was exhausted produced a complete,
+plausible, entirely fake AI column — the report now refuses to publish a provider-degraded
+run as a model result. Three of our own eval labels were wrong too, penalising the agent
+for correct answers.
+
+**Second, exceptions now have a lifecycle instead of being a dead end.** Previously we
+flagged six settlements and stopped, so "exceptions we could not resolve" had no
+denominator. A flagged settlement now produces a dispute packet with the computed delta
+and an evidence hash; when Razorpay posts a corrective `adjustment` line in a later cycle,
+a fully deterministic matcher binds it back to the original exception and closes it. One
+of five fixture exceptions closes — **20%** — and the other four stay open on purpose:
+wrong amount, duplicate adjustments, missing reference, and no adjustment at all. Nothing
+binds unless the amount matches exactly in paise, the direction and currency agree, the
+timing is later, the settlement or UTR is named exactly, and the pairing is unique. The
+LLM has no role in that decision, because a hallucinated binding would silently mark a
+real financial exception resolved.
+
+The most important correction here was to our own plan. We had intended to demo the
+integrity rate improving from 81.8% to 84.8% once a correction landed. That claim is
+false: a later adjustment compensates cash, it does not make an earlier failed control
+pass. Historical integrity and operational closure are now separate metrics that never
+mix, `settlement_integrity_rate` stays 81.82% no matter how many exceptions close, and a
+test enforces it.
+
 The remaining gaps require real merchant data, production APIs, stronger semantic validation, authentication, and human approval workflows. I did not pretend to finish those in a hackathon prototype. I prioritised the complete Track 04 loop: process a 50+ record batch, measure accuracy and throughput, export every exception, explain failures, and never let AI change a verified financial result.
 
 ---
@@ -91,6 +132,42 @@ At the time this report was updated, the automated suite had **56 passing tests*
 - reasoning-model stall recovery;
 - invented money rejection;
 - real money used in the wrong role.
+
+(The suite stands at **230 passing tests** as of 3 September 2026.)
+
+### 6. The agent is measured, not asserted
+
+`python -m src.eval.qa_cli --runs 3` scores 41 hand-labeled questions across four classes:
+answerable-with-citation, must-abstain, must-refuse, and exact-money. Both the
+deterministic path and the AI path are scored side by side, and every case records **who
+actually answered it**, because the agent falls back to rules whenever the model fails and
+an unattributed score can be pure fallback.
+
+Published figures are the **worst** clean run, never the mean and never the best. A run
+the provider partly refused is excluded from selection entirely and the header says how
+many runs were clean out of those attempted.
+
+What the scorecard deliberately does **not** claim: prompt-injection refusal is a system
+guardrail, not model judgment, because the router refuses before the model is ever called;
+citation validity means the cited id resolves, not that it supports the sentence; and the
+money guard covers currency-marked amounts only, since treating bare numerals as money
+would read "18% GST" as a figure.
+
+### 7. Exceptions have a lifecycle, and most of them stay open
+
+A flagged settlement emits a dispute packet (failing control, signed delta in paise,
+citations, evidence hash). If Razorpay posts a matching `adjustment` line in a later
+cycle, a deterministic matcher binds it and the exception closes as compensated. Six
+predicates must all hold and the pairing must be one-to-one; there is no tolerance, no
+fuzzy matching, and no LLM involvement.
+
+The lifecycle is recomputed from two immutable feeds on every run rather than stored in a
+journal, so there is no hidden state to drift or corrupt. Closure is measured on
+hand-written fixtures rather than generator output, because a generator that writes both
+the defect and its remedy would prove code execution rather than matching quality.
+
+The result is a 20% closure rate, and that is the honest number. Four of five exceptions
+stay open by design.
 
 ---
 
@@ -398,16 +475,30 @@ That promise is smaller than “an infallible AI finance controller,” but it i
 
 > “No, I do not claim the AI is 100% correct. During testing it converted ₹58.44 into ₹5,844, which is exactly the kind of confident finance error this product must prevent. I moved calculations completely out of the LLM, added formatted evidence and numeric-role checks, and discard an AI answer when it violates them. There are still limits: a valid number can appear in an ambiguous sentence, and non-money wording can still be wrong. The production fix is typed claim generation followed by deterministic rendering. I did not fake that layer for the hackathon. Today, rules decide every financial status; AI only explains or falls back.”
 
+> “And I can put a number on it rather than asking you to trust the design. Across 41
+> hand-labeled questions the AI path takes money accuracy from 63.6% to 100%, emits zero
+> unverified amounts, and in that same run the validator caught 12 separate attempts by the
+> model to state a wrong rupee figure. The guard firing twelve times is the evidence that
+> the architecture is load-bearing. Building that scorecard also found four defects we had
+> been shipping blind, including a money guard that only recognised the rupee symbol, so
+> `Rs 999.00` bypassed it entirely.”
+
 ## Suggested video line
 
 > “The most important test was a failure: AI said ₹5,844 where GST was ₹58.44. We did not tune the prompt and call it solved. We removed calculations from AI, verify every displayed rupee against evidence, and throw away unsafe answers. The remaining language risk is documented, not hidden.”
 
+> “Then we measured it. Forty-one labeled questions: money accuracy 63.6% to 100%, zero
+> unverified amounts, and twelve wrong figures caught by the validator before any of them
+> reached a merchant. And exceptions now close — a Razorpay adjustment gets matched back to
+> the settlement it corrects, deterministically. One of five closes. The integrity rate
+> does not move, because compensation is not repair.”
+
 ---
 
-## Building the Q&A scorecard and the exception lifecycle (2 Sept 2026)
+## Building the Q&A scorecard and the exception lifecycle (2-3 Sept 2026)
 
-Six things broke or turned out to be wrong. Four were found *by* the new eval, which is
-the strongest argument for having built it.
+Seven things broke or turned out to be wrong. Four were found *by* the new eval, which
+is the strongest argument for having built it.
 
 ### 1. The money guard only understood the rupee symbol
 
