@@ -169,3 +169,18 @@ def test_no_adjustments_binds_nothing():
     result = match_adjustments([exc()], [])
     assert result["bindings"] == {}
     assert result["unmatched_adjustments"] == []
+
+
+def test_rejection_reason_reports_the_closest_near_miss():
+    """The review list must explain the near-miss, not whichever exception came first."""
+    unrelated = exc(delta=2000, sid="setl_other", utr="UTROTHER", eid="exc_unrelated")
+    referenced = exc(delta=4000, sid="setl_lc_wrong_amount", utr="UTRLC0002",
+                     eid="exc_referenced")
+    line = adj(entity_id="adj_wrong", credit=3500, amount=3500,
+               reference_settlement_id="setl_lc_wrong_amount",
+               description="Partial recon correction")
+    result = match_adjustments([unrelated, referenced], [line])
+    reasons = result["rejections"]["adj_wrong"]
+    # Against the referenced exception only the amount is wrong (one reason).
+    # Against the unrelated one both amount and reference are wrong (two reasons).
+    assert reasons == ["amount 3500 != delta 4000"], reasons

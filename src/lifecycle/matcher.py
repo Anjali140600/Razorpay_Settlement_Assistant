@@ -99,17 +99,20 @@ def match_adjustments(
 
     for line in adjustments:
         matches: list[str] = []
-        first_rejection: list[str] = []
+        near_miss: list[str] | None = None
         for exc in exceptions:
             reasons = candidate_reasons(exc, line, exc.flagged_at, line.settled_at)
             if reasons:
-                if not first_rejection:
-                    first_rejection = reasons
+                # Report the closest near-miss, not whichever exception happened to be
+                # iterated first. A reviewer needs "this one is right except the amount",
+                # not an unrelated exception's failures.
+                if near_miss is None or len(reasons) < len(near_miss):
+                    near_miss = reasons
             else:
                 matches.append(exc.exception_id)
         viable[line.entity_id] = matches
         if not matches:
-            rejections[line.entity_id] = first_rejection or ["no open exception matched"]
+            rejections[line.entity_id] = near_miss or ["no open exception matched"]
 
     # P6 — exactly one exception for this adjustment, and this adjustment the only
     # candidate for that exception.
