@@ -1892,7 +1892,10 @@ def unwrap_model_answer(text: str) -> str:
 def filter_response_text(text: str) -> str:
     """Strip secrets, reasoning blocks, JSON wrappers, and leaked paths."""
     text = strip_reasoning(unwrap_model_answer(text))
-    blocked = ("GROQ_API_KEY", "OPENAI_API_KEY", "CEREBRAS_API_KEY", "sk-", "gsk_", "/home/", ".env")
+    blocked = (
+        "GROQ_API_KEY", "GEMINI_API_KEY", "OPENROUTER_API_KEY",
+        "sk-", "gsk_", "/home/", ".env",
+    )
     for b in blocked:
         if b in text:
             return ABSTENTION_MSG

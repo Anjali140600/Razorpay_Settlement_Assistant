@@ -50,6 +50,8 @@ def test_injection_mark_verified(batches, tmp_path: Path):
 
 def test_filter_response_secrets():
     assert "GROQ" not in filter_response_text("Your GROQ_API_KEY is leaked")
+    assert "GEMINI" not in filter_response_text("Your GEMINI_API_KEY is leaked")
+    assert "OPENROUTER" not in filter_response_text("Your OPENROUTER_API_KEY is leaked")
 
 
 def test_controls_unchanged_after_injection(batches, tmp_path: Path):

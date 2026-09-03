@@ -114,11 +114,11 @@ def test_llm_hallucinated_citation_abstains(mock_llm_client, batches):
     assert ans.abstained
 
 
-def test_groq_fail_cerebras_success(batches):
+def test_groq_fail_gemini_success(batches):
     groq_client = MagicMock()
     groq_client.chat.completions.create.side_effect = RuntimeError("groq down")
-    cerebras_client = MagicMock()
-    cerebras_client.chat.completions.create.return_value = _mock_completion(
+    gemini_client = MagicMock()
+    gemini_client.chat.completions.create.return_value = _mock_completion(
         tool_calls=[
             _mock_tool_call(
                 "finish_answer",
@@ -134,10 +134,10 @@ def test_groq_fail_cerebras_success(batches):
     def fake_create(provider=None):
         if provider == "groq":
             return groq_client
-        return cerebras_client
+        return gemini_client
 
     with patch("src.agent.settlement_qa.create_llm_client", side_effect=fake_create), patch(
-        "src.agent.settlement_qa.iter_llm_providers", return_value=iter(["groq", "cerebras"])
+        "src.agent.settlement_qa.iter_llm_providers", return_value=iter(["groq", "gemini"])
     ), patch("src.agent.settlement_qa.get_llm_model", return_value="test-model"):
         ans = answer_free_text(
             "Why does batch not add up?",
@@ -145,7 +145,47 @@ def test_groq_fail_cerebras_success(batches):
             batches,
             use_llm=True,
         )
-    assert ans.agent_mode == "cerebras"
+    assert ans.agent_mode == "gemini"
+    assert not ans.abstained
+
+
+def test_groq_and_gemini_fail_openrouter_success(batches):
+    groq_client = MagicMock()
+    groq_client.chat.completions.create.side_effect = RuntimeError("groq down")
+    gemini_client = MagicMock()
+    gemini_client.chat.completions.create.side_effect = RuntimeError("gemini down")
+    openrouter_client = MagicMock()
+    openrouter_client.chat.completions.create.return_value = _mock_completion(
+        tool_calls=[
+            _mock_tool_call(
+                "finish_answer",
+                {
+                    "answer_text": "Batch gap explained.",
+                    "citations": ["setl_batch_mismatch"],
+                    "abstained": False,
+                },
+            )
+        ]
+    )
+
+    def fake_create(provider=None):
+        if provider == "groq":
+            return groq_client
+        if provider == "gemini":
+            return gemini_client
+        return openrouter_client
+
+    with patch("src.agent.settlement_qa.create_llm_client", side_effect=fake_create), patch(
+        "src.agent.settlement_qa.iter_llm_providers",
+        return_value=iter(["groq", "gemini", "openrouter"]),
+    ), patch("src.agent.settlement_qa.get_llm_model", return_value="test-model"):
+        ans = answer_free_text(
+            "Why does batch not add up?",
+            "setl_batch_mismatch",
+            batches,
+            use_llm=True,
+        )
+    assert ans.agent_mode == "openrouter"
     assert not ans.abstained
 
 

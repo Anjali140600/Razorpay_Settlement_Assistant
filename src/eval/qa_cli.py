@@ -52,8 +52,8 @@ def main() -> None:
 
     if not args.baseline_only and not llm_providers_available():
         raise SystemExit(
-            "No LLM provider configured. Set GROQ_API_KEY (or CEREBRAS_API_KEY / "
-            "OPENAI_API_KEY) in .env to score the AI column, or pass --baseline-only."
+            "No LLM provider configured. Set GROQ_API_KEY (or GEMINI_API_KEY / "
+            "OPENROUTER_API_KEY) in .env to score the AI column, or pass --baseline-only."
         )
 
     recon = load_recon_json(args.data_dir / "recon.json")

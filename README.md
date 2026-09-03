@@ -92,7 +92,7 @@ was unavailable, so a quota-exhausted run cannot be published as model performan
 | Mode | Command |
 |------|---------|
 | Rules + keyword Q&A (default) | `./run.sh` |
-| AI Q&A (Groq → Cerebras → keyword) | Set `USE_LLM=1` + `GROQ_API_KEY` and/or `CEREBRAS_API_KEY` in `.env` |
+| AI Q&A (Groq → Gemini → OpenRouter → keyword) | Set `USE_LLM=1` + `GROQ_API_KEY`, `GEMINI_API_KEY`, and/or `OPENROUTER_API_KEY` in `.env` |
 
 Rules engine owns all amounts. Agent runs on exceptions and Q&A only.
 

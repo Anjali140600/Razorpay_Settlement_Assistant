@@ -57,7 +57,7 @@ https://razorpay.com/buildathon/
 |----------|--------|
 | Integrity rate? | % settlements passing batch + tax-line controls (denominator: processed) |
 | Why no bank upload? | Razorpay-native v1; verifies Dashboard data; bank confirm is Phase 2 |
-| Why LLM? | Rules verify money; Groq/Cerebras agent explains with read-only tools; keyword fallback offline |
+| Why LLM? | Rules verify money; Groq/Gemini/OpenRouter agent explains with read-only tools; keyword fallback offline |
 | vs Dashboard export? | Auto-verifies 50+ lines; answers questions with payment_id evidence |
 | Production? | Prototype; production = Settlements + Recon API embed in Dashboard |
 | Merchant privacy? | Only Razorpay data merchant already trusts; no bank/ERP sharing |

@@ -283,7 +283,8 @@ CSS = """
   }
 
   .badge-groq { background: #dcfce7; color: #166534; border-color: #86efac; }
-  .badge-cerebras { background: #dbeafe; color: #1e40af; border-color: #93c5fd; }
+  .badge-gemini { background: #dbeafe; color: #1e40af; border-color: #93c5fd; }
+  .badge-openrouter { background: #ede9fe; color: #5b21b6; border-color: #c4b5fd; }
   .badge-keyword { background: #f1f5f9; color: #334155; border-color: #cbd5e1; }
   .badge-escalated { background: #ffedd5; color: #c2410c; border-color: #fdba74; }
 
@@ -545,7 +546,8 @@ def render_check(ctrl) -> None:
 def agent_mode_badge(mode: str) -> str:
     labels = {
         "groq": ("Answered via Groq", "badge-groq"),
-        "cerebras": ("Answered via Cerebras", "badge-cerebras"),
+        "gemini": ("Answered via Gemini", "badge-gemini"),
+        "openrouter": ("Answered via OpenRouter", "badge-openrouter"),
         "keyword": ("Answered via rules", "badge-keyword"),
     }
     label, css = labels.get(mode, ("Answered via rules", "badge-keyword"))
@@ -938,13 +940,19 @@ with st.sidebar:
             run_check()
         st.rerun()
     st.session_state["use_llm_qa"] = st.toggle(
-        "AI answers (Groq + Cerebras fallback)",
+        "AI answers (Groq + Gemini + OpenRouter fallback)",
         value=st.session_state["use_llm_qa"],
         disabled=not should_use_llm(),
-        help="Uses Groq first, then Cerebras if Groq fails. Preset buttons stay rule-based.",
+        help=(
+            "Uses Groq first, then Gemini, then OpenRouter if earlier providers fail. "
+            "Preset buttons stay rule-based."
+        ),
     )
     if not should_use_llm():
-        st.caption("Set USE_LLM=1 and GROQ_API_KEY or CEREBRAS_API_KEY in .env to enable AI.")
+        st.caption(
+            "Set USE_LLM=1 and GROQ_API_KEY, GEMINI_API_KEY, or OPENROUTER_API_KEY "
+            "in .env to enable AI."
+        )
     else:
         providers = llm_providers_available()
         st.caption(

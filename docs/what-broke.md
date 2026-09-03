@@ -612,3 +612,22 @@ correction twice, so that is what the fixture now tests.
   must-abstain case answers with settlement status instead of abstaining about customer
   identity. Three known holes, published as 75% refusal and 90% abstention rather than
   hidden.
+
+---
+
+## Replacing Cerebras with Gemini + OpenRouter (3 Sept 2026)
+
+Cerebras' account quota required billing that was never enabled (the entry above already
+records a prior Cerebras model-name mismatch, and the account never became usable). Rather
+than keep paying attention to a dead second leg, the fallback chain is now three free-tier
+options: **Groq (primary) → Gemini → OpenRouter → keyword**.
+
+Both new legs are OpenAI-compatible endpoints (Gemini via its `v1beta/openai/`
+compatibility layer, OpenRouter natively), so they slot into the same
+`create_llm_client(provider)` shape Groq and Cerebras already used —
+`src/agent/llm_client.py` needed no new abstraction, just new branches.
+
+One provider dying no longer means falling straight to keyword templates: three
+independent free tiers make it far less likely all three are exhausted or billing-blocked
+at once, which is exactly the failure mode `docs/what-broke.md`'s scorecard entries above
+describe.

@@ -98,10 +98,10 @@ Per payment line in recon:
 
 ## Settlement Q&A
 
-**Presets (rule-based) + free text (Groq → Cerebras → keyword fallback).**
+**Presets (rule-based) + free text (Groq → Gemini → OpenRouter → keyword fallback).**
 
 - Tools: `fetch_settlement`, `fetch_recon_lines`, `calculate_batch`, `explain_fee_tax`, `search_settlements`
-- LLM providers: Groq primary, Cerebras fallback (`src/agent/llm_client.py`)
+- LLM providers: Groq primary, Gemini and OpenRouter fallback (`src/agent/llm_client.py`)
 - User input is untrusted; see [security.md](security.md) and PLAN.md Section 12
 - Every answer cites tool output; abstains when evidence missing
 - Genuine unresolvable failures → simulated support ticket (`RZP-SUP-…`)

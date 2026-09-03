@@ -50,7 +50,7 @@
 
 - Groq retired model / quota → backup Groq model or rules; chat **says why**, not a silent fallback
 - AI quoted **₹5,844** vs **₹58.44** → only `*_display` rupees; invented or mis-roled amounts **dropped**
-- Groq fails → Cerebras / keyword; controls unchanged
+- Groq fails → Gemini / OpenRouter / keyword; controls unchanged
 - Prompt injection → refused; verification status unchanged
 - Unknown UTR → **abstain** (write-up: [what-broke.md](what-broke.md))
 
