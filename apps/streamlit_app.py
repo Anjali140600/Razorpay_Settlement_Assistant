@@ -22,6 +22,7 @@ from src.agent.settlement_qa import (
     MAX_QUESTIONS_PER_SESSION,
     PRESET_INTENTS,
     answer_free_text,
+    answer_pending_query,
     answer_preset,
     filter_response_text,
     last_llm_error,
@@ -29,8 +30,12 @@ from src.agent.settlement_qa import (
     question_hash,
     raise_support_ticket,
     sanitize_question,
+    submit_compensation_claim,
     validate_question_input,
 )
+from src.agent.triage import TriageResult, TriageVerdict
+from src.agent.triage import classify as classify_triage
+from src.connectors.loaders import load_pending_payments
 from src.domain.models import SettlementIntegrityStatus
 from src.engine import ReconciliationEngine
 
@@ -493,6 +498,40 @@ def format_date(dt) -> str:
     return dt.strftime("%b %-d") if hasattr(dt, "strftime") else str(dt)[:10]
 
 
+def render_pending_payment_panel(payment) -> None:
+    """Minimal single-turn Q&A for a payment with no settlement yet.
+
+    No ticket/compensation CTAs here: those concepts don't apply until a
+    settlement exists to escalate or compensate against.
+    """
+    st.markdown('<p class="section-label">Pending payment detail</p>', unsafe_allow_html=True)
+    st.subheader(f"{format_inr(payment.amount)} · captured {format_date(payment.captured_at)}")
+    st.markdown(
+        '<p class="status-pill attention">⏳ Not yet settled</p>',
+        unsafe_allow_html=True,
+    )
+    if payment.expected_settlement_at:
+        st.caption(f"Expected settlement: {payment.expected_settlement_at.strftime('%d %b %Y')} (calendar days)")
+
+    question = st.chat_input(
+        "Ask about this payment (e.g. \"where is my money\" or \"can I get this instantly\")…",
+        key=f"pending_chat_input_{payment.entity_id}",
+    )
+    history_key = f"pending_chat_{payment.entity_id}"
+    if history_key not in st.session_state:
+        st.session_state[history_key] = []
+
+    if question:
+        ans = answer_pending_query(payment, question)
+        st.session_state[history_key].append((question, filter_response_text(ans.answer_text)))
+
+    for q, a in st.session_state[history_key]:
+        with st.chat_message("user"):
+            st.markdown(q)
+        with st.chat_message("assistant", avatar=ASSISTANT_AVATAR):
+            st.markdown(a)
+
+
 def run_check() -> None:
     engine = ReconciliationEngine(DEMO_DIR, eval_date=date(2026, 8, 30), use_llm=False)
     engine.load_sources()
@@ -605,6 +644,23 @@ def ticket_offer_pending(settlement_id: str) -> bool:
     return False
 
 
+def compute_triage(settlement_id: str, decision, batches: dict) -> TriageResult | None:
+    if not settlement_id or settlement_id not in batches or not decision:
+        return None
+    return classify_triage(settlement_id, batches[settlement_id], decision, batches)
+
+
+def claim_offer_pending(settlement_id: str) -> bool:
+    """True when our last reply offered the compensation-claim button and it is still unused."""
+    if settlement_id in st.session_state["filed_claims"]:
+        return False
+    for msg in reversed(get_chat_history(settlement_id)):
+        if msg["role"] != "assistant":
+            continue
+        return bool((msg.get("meta") or {}).get("offer_compensation"))
+    return False
+
+
 def envelope_to_meta(ans, *, ai_requested: bool = False) -> dict:
     mode = getattr(ans, "agent_mode", "keyword")
     return {
@@ -612,6 +668,10 @@ def envelope_to_meta(ans, *, ai_requested: bool = False) -> dict:
         "escalated_to_support": getattr(ans, "escalated_to_support", False),
         "offer_raise_ticket": getattr(ans, "offer_raise_ticket", False),
         "support_ticket_id": getattr(ans, "support_ticket_id", None),
+        "triage_verdict": getattr(ans, "triage_verdict", ""),
+        "offer_compensation": getattr(ans, "offer_compensation", False),
+        "compensation_amount_display": getattr(ans, "compensation_amount_display", None),
+        "compensation_claim_id": getattr(ans, "compensation_claim_id", None),
         "citations": getattr(ans, "citations", None) or [],
         "tool_trace": getattr(ans, "tool_trace", None),
         "abstained": getattr(ans, "abstained", False),
@@ -632,13 +692,39 @@ def apply_raised_ticket(settlement_id: str, decision, batches: dict) -> None:
     st.rerun()
 
 
+def apply_filed_claim(settlement_id: str, decision, batches: dict) -> None:
+    """File one compensation claim — only ever called from an explicit button click,
+    and re-triages first so a claim can never be filed on stale evidence."""
+    triage = compute_triage(settlement_id, decision, batches)
+    if triage is None or triage.verdict != TriageVerdict.AUTO_COMPENSABLE:
+        st.rerun()
+        return
+    claim_env = submit_compensation_claim(settlement_id, triage, batches)
+    st.session_state["filed_claims"][settlement_id] = claim_env
+    append_chat_message(
+        settlement_id,
+        "assistant",
+        claim_env.answer_text,
+        envelope_to_meta(claim_env),
+    )
+    st.rerun()
+
+
 def render_raise_ticket_button(settlement_id: str, decision, batches: dict, key: str) -> None:
     if st.button("Raise ticket with Razorpay support", type="primary", key=key, width="stretch"):
         apply_raised_ticket(settlement_id, decision, batches)
 
 
+def render_compensation_button(settlement_id: str, decision, batches: dict, key: str, label: str) -> None:
+    if st.button(label, type="primary", key=key, width="stretch"):
+        apply_filed_claim(settlement_id, decision, batches)
+
+
 def render_ticket_cta(meta: dict, settlement_id: str, decision, batches: dict, key: str) -> None:
-    if not meta.get("offer_raise_ticket") or not needs_support_ticket(decision):
+    # The backend envelope is the single source of truth on whether to offer a ticket —
+    # it also fires for a merchant-reported issue (e.g. bank non-receipt) on a settlement
+    # whose own controls all pass, which needs_support_ticket(decision) would say no to.
+    if not meta.get("offer_raise_ticket"):
         return
     raised = st.session_state["raised_tickets"].get(settlement_id)
     if raised:
@@ -648,6 +734,25 @@ def render_ticket_cta(meta: dict, settlement_id: str, decision, batches: dict, k
         )
         return
     render_raise_ticket_button(settlement_id, decision, batches, key)
+
+
+def render_compensation_cta(meta: dict, settlement_id: str, decision, batches: dict, key: str) -> None:
+    """Two explicit buttons — consent, not a default. Nothing files until one is clicked."""
+    filed = st.session_state["filed_claims"].get(settlement_id)
+    if filed:
+        st.markdown(
+            f'<div class="ticket-raised">Compensation claim filed — <code>{filed.compensation_claim_id}</code></div>',
+            unsafe_allow_html=True,
+        )
+        return
+    if not meta.get("offer_compensation"):
+        return
+    amount = meta.get("compensation_amount_display") or "the confirmed amount"
+    col1, col2 = st.columns(2)
+    with col1:
+        render_compensation_button(settlement_id, decision, batches, f"{key}_claim", f"Submit claim for {amount}")
+    with col2:
+        render_raise_ticket_button(settlement_id, decision, batches, f"{key}_escalate")
 
 
 def resolve_answer(
@@ -671,6 +776,11 @@ def resolve_answer(
         if settlement_id in st.session_state["raised_tickets"]
         else None
     )
+    raised_claim_id = (
+        st.session_state["filed_claims"][settlement_id].compensation_claim_id
+        if settlement_id in st.session_state["filed_claims"]
+        else None
+    )
     ans = answer_free_text(
         question,
         settlement_id,
@@ -679,6 +789,8 @@ def resolve_answer(
         settlement_decision=decision,
         raised_ticket_id=raised_ticket_id,
         ticket_offer_pending=ticket_offer_pending(settlement_id),
+        raised_claim_id=raised_claim_id,
+        compensation_offer_pending=claim_offer_pending(settlement_id),
     )
     _ = question_hash(sanitize_question(question))
     ai_requested = bool(st.session_state["use_llm_qa"])
@@ -727,6 +839,8 @@ def render_message_meta(meta: dict, *, show_trace: bool = True) -> None:
     st.markdown(badges, unsafe_allow_html=True)
     if meta.get("support_ticket_id"):
         st.markdown(f"**Ticket ID:** `{meta['support_ticket_id']}`")
+    if meta.get("compensation_claim_id"):
+        st.markdown(f"**Claim ID:** `{meta['compensation_claim_id']}`")
     if meta.get("citations"):
         st.caption(f"Evidence: {', '.join(meta['citations'])}")
     if meta.get("fallback_reason"):
@@ -754,13 +868,18 @@ def render_chat_message(
         meta = msg.get("meta") or {}
         if is_assistant:
             render_message_meta(meta)
-            render_ticket_cta(
-                meta,
-                settlement_id,
-                decision,
-                batches,
-                key=f"raise_ticket_chat_{settlement_id}_{msg_idx}",
-            )
+            if meta.get("offer_compensation") or settlement_id in st.session_state["filed_claims"]:
+                render_compensation_cta(
+                    meta, settlement_id, decision, batches, key=f"compensate_chat_{settlement_id}_{msg_idx}"
+                )
+            else:
+                render_ticket_cta(
+                    meta,
+                    settlement_id,
+                    decision,
+                    batches,
+                    key=f"raise_ticket_chat_{settlement_id}_{msg_idx}",
+                )
 
 
 def run_live_exchange(
@@ -804,13 +923,19 @@ def run_live_exchange(
 
         st.write_stream(stream_words(text))
         render_message_meta(meta, show_trace=False)
-        render_ticket_cta(
-            meta,
-            settlement_id,
-            decision,
-            batches,
-            key=f"raise_ticket_live_{settlement_id}_{st.session_state['qa_count']}",
-        )
+        if meta.get("offer_compensation") or settlement_id in st.session_state["filed_claims"]:
+            render_compensation_cta(
+                meta, settlement_id, decision, batches,
+                key=f"compensate_live_{settlement_id}_{st.session_state['qa_count']}",
+            )
+        else:
+            render_ticket_cta(
+                meta,
+                settlement_id,
+                decision,
+                batches,
+                key=f"raise_ticket_live_{settlement_id}_{st.session_state['qa_count']}",
+            )
 
     append_chat_message(settlement_id, "assistant", text, meta)
     st.session_state["qa_count"] += 1
@@ -919,6 +1044,8 @@ if "use_llm_qa" not in st.session_state:
     st.session_state["use_llm_qa"] = should_use_llm()
 if "raised_tickets" not in st.session_state:
     st.session_state["raised_tickets"] = {}
+if "filed_claims" not in st.session_state:
+    st.session_state["filed_claims"] = {}
 
 engine: ReconciliationEngine = st.session_state["engine"]
 run = st.session_state["run"]
@@ -1010,6 +1137,27 @@ with st.container(border=True):
         selected_id = options[picked]
         st.session_state["selected_settlement"] = selected_id
 
+pending_payments = load_pending_payments(DEMO_DIR / "recon.json", DEMO_DIR / "manifest.json")
+selected_pending_id = None
+if pending_payments:
+    with st.container(border=True):
+        st.markdown('<p class="section-label">Pending payments (not yet settled)</p>', unsafe_allow_html=True)
+        pending_options = {
+            f"{format_inr(p.amount)} · {p.order_id or p.entity_id} · captured {format_date(p.captured_at)}": p.entity_id
+            for p in pending_payments
+        }
+        pending_labels = ["— none selected —"] + list(pending_options.keys())
+        picked_pending = st.selectbox("Pending payments", pending_labels, label_visibility="collapsed")
+        if picked_pending != "— none selected —":
+            selected_pending_id = pending_options[picked_pending]
+            selected_id = None
+            st.session_state["selected_settlement"] = None
+
+if selected_pending_id:
+    payment = next(p for p in pending_payments if p.entity_id == selected_pending_id)
+    with st.container(border=True):
+        render_pending_payment_panel(payment)
+
 if selected_id:
     decision = next(d for d in run.settlement_decisions if d.settlement_id == selected_id)
     batch = next(b for b in engine.batches if b.settlement_id == selected_id)
@@ -1031,10 +1179,58 @@ if selected_id:
                 render_check(ctrl)
 
         batches = engine.batch_map()
-        show_raise_ticket = needs_support_ticket(decision)
+        triage = compute_triage(selected_id, decision, batches)
         raised = st.session_state["raised_tickets"].get(selected_id)
+        filed = st.session_state["filed_claims"].get(selected_id)
+        verdict = triage.verdict if triage else None
 
-        if show_raise_ticket and not raised:
+        if filed:
+            st.markdown(
+                '<div class="support-panel">'
+                '<p class="section-label">Compensation claim</p>'
+                f'<div class="ticket-raised">Claim filed — <code>{filed.compensation_claim_id}</code></div>'
+                "<p style='margin-top:0.65rem;color:#5b21b6;'>Submitted to Razorpay for the confirmed "
+                "shortfall shown above.</p>"
+                "</div>",
+                unsafe_allow_html=True,
+            )
+        elif verdict == TriageVerdict.ALREADY_COMPENSATED:
+            st.markdown(
+                '<div class="support-panel">'
+                '<p class="section-label">Already resolved</p>'
+                f"<p>{triage.detail} No action needed — the batch-integrity check above stays "
+                "flagged because history is never rewritten, but the shortfall itself is closed.</p>"
+                "</div>",
+                unsafe_allow_html=True,
+            )
+        elif verdict == TriageVerdict.AUTO_COMPENSABLE and not raised:
+            st.markdown(
+                '<div class="support-panel">'
+                '<p class="section-label">Compensation available</p>'
+                f"<p>{triage.detail} You choose what happens next — "
+                "submit a claim now, or send it to Razorpay support instead.</p>"
+                "</div>",
+                unsafe_allow_html=True,
+            )
+            col1, col2 = st.columns(2)
+            with col1:
+                render_compensation_button(
+                    selected_id, decision, batches,
+                    f"claim_header_{selected_id}", f"Submit claim for {triage.delta_display}",
+                )
+            with col2:
+                render_raise_ticket_button(selected_id, decision, batches, f"raise_ticket_header_{selected_id}")
+        elif raised:
+            st.markdown(
+                '<div class="support-panel">'
+                '<p class="section-label">Razorpay support</p>'
+                f'<div class="ticket-raised">Ticket raised — <code>{raised.support_ticket_id}</code></div>'
+                "<p style='margin-top:0.65rem;color:#5b21b6;'>Escalated to Razorpay support. "
+                "They will investigate the issue shown above.</p>"
+                "</div>",
+                unsafe_allow_html=True,
+            )
+        elif verdict in (TriageVerdict.AUTO_COMPENSABLE, TriageVerdict.NEEDS_SUPPORT):
             st.markdown(
                 '<div class="support-panel">'
                 '<p class="section-label">Razorpay support</p>'
@@ -1048,16 +1244,6 @@ if selected_id:
                 decision,
                 batches,
                 key=f"raise_ticket_header_{selected_id}",
-            )
-        elif raised:
-            st.markdown(
-                '<div class="support-panel">'
-                '<p class="section-label">Razorpay support</p>'
-                f'<div class="ticket-raised">Ticket raised — <code>{raised.support_ticket_id}</code></div>'
-                "<p style='margin-top:0.65rem;color:#5b21b6;'>Escalated to Razorpay support. "
-                "They will investigate the issue shown above.</p>"
-                "</div>",
-                unsafe_allow_html=True,
             )
 
     with st.container(border=True):
