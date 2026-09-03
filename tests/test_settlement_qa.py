@@ -591,3 +591,30 @@ def test_pending_query_never_crashes_without_expected_date():
     ans = answer_pending_query(payment, "when will I get paid")
     assert isinstance(ans.answer_text, str)
     assert ans.answer_text
+
+
+def test_settlement_short_follow_up_uses_previous_intent(batches):
+    ans = answer_free_text(
+        "Explain that",
+        "setl_tax_mismatch",
+        batches,
+        use_llm=False,
+        previous_intent="breakdown_fees",
+    )
+
+    assert not ans.abstained
+    assert "GST" in ans.answer_text
+    assert "explain_fee_tax" in ans.tool_trace
+
+
+def test_pending_short_follow_up_uses_previous_intent():
+    payment = _pending(instant_eligible="yes", cycle_type="instant_eligible")
+
+    ans = answer_pending_query(
+        payment,
+        "Explain that",
+        previous_intent="pending_instant",
+    )
+
+    assert not ans.abstained
+    assert "eligible for instant" in ans.answer_text.lower()

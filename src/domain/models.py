@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import date, datetime
 from decimal import Decimal
 from enum import Enum
-from typing import Any
+from typing import Any, Literal
 from uuid import uuid4
 
 from pydantic import BaseModel, Field
@@ -191,6 +191,87 @@ class AnswerEnvelope(BaseModel):
     offer_compensation: bool = False
     compensation_amount_display: str | None = None
     compensation_claim_id: str | None = None
+
+
+class AssistantSubjectKind(str, Enum):
+    NONE = "none"
+    SETTLEMENT = "settlement"
+    PENDING_PAYMENT = "pending_payment"
+    PENDING_PAYMENT_SET = "pending_payment_set"
+    ACCOUNT = "account"
+
+
+class AssistantActionKind(str, Enum):
+    NAVIGATE = "navigate"
+    RAISE_TICKET = "raise_ticket"
+    CONFIRM_TICKET = "confirm_ticket"
+    SUBMIT_CLAIM = "submit_claim"
+    CONFIRM_CLAIM = "confirm_claim"
+    VIEW_SETTLEMENT = "view_settlement"
+    VIEW_PAYMENT = "view_payment"
+    GET_INSTANT_SETTLEMENT_QUOTE = "get_instant_settlement_quote"
+    TRACK_STATUS = "track_status"
+    CANCEL = "cancel"
+    MARK_RESOLVED = "mark_resolved"
+    NEED_MORE_HELP = "need_more_help"
+
+
+class AssistantResponseBlockKind(str, Enum):
+    DETAILS = "details"
+    CALCULATION = "calculation"
+    EVIDENCE = "evidence"
+    NEXT_STEP = "next_step"
+    WARNING = "warning"
+
+
+class AssistantResponseBlock(BaseModel):
+    kind: AssistantResponseBlockKind
+    title: str | None = None
+    body: str | None = None
+    items: list[str] = Field(default_factory=list)
+    rows: list[dict[str, str]] = Field(default_factory=list)
+
+
+class AssistantAction(BaseModel):
+    action_id: str
+    kind: AssistantActionKind
+    label: str
+    style: Literal["primary", "secondary", "tertiary"] = "secondary"
+    icon: str | None = None
+    enabled: bool = True
+    disabled_reason: str | None = None
+    requires_confirmation: bool = False
+    payload: dict[str, Any] = Field(default_factory=dict)
+
+
+class AssistantResponse(BaseModel):
+    response_id: str = Field(default_factory=lambda: str(uuid4()))
+    heading: str
+    summary: str
+    blocks: list[AssistantResponseBlock] = Field(default_factory=list)
+    citations: list[str] = Field(default_factory=list)
+    actions: list[AssistantAction] = Field(default_factory=list)
+    agent_mode: str = "keyword"
+    ask_resolution: bool = True
+
+
+class AssistantTranscriptMessage(BaseModel):
+    role: Literal["assistant", "user"]
+    content: str = ""
+    response: AssistantResponse | None = None
+
+
+class AssistantSession(BaseModel):
+    node_id: str = "home"
+    back_stack: list[str] = Field(default_factory=list)
+    subject_kind: AssistantSubjectKind = AssistantSubjectKind.NONE
+    subject_ids: list[str] = Field(default_factory=list)
+    subject_context_start: int | None = None
+    last_intent: str | None = None
+    context_version: int = 0
+    messages: list[AssistantTranscriptMessage] = Field(default_factory=list)
+    pending_action: AssistantAction | None = None
+    resolution_status: Literal["open", "resolved"] = "open"
 
 
 class CompensationClaim(BaseModel):

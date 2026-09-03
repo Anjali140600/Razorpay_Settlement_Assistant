@@ -58,7 +58,7 @@ The most important correction here was to our own plan. We had intended to demo 
 integrity rate improving from 81.8% to 84.8% once a correction landed. That claim is
 false: a later adjustment compensates cash, it does not make an earlier failed control
 pass. Historical integrity and operational closure are now separate metrics that never
-mix, `settlement_integrity_rate` stays 81.82% no matter how many exceptions close, and a
+mix, `settlement_integrity_rate` stays 73.81% no matter how many exceptions close, and a
 test enforces it.
 
 The remaining gaps require real merchant data, production APIs, stronger semantic validation, authentication, and human approval workflows. I did not pretend to finish those in a hackathon prototype. I prioritised the complete Track 04 loop: process a 50+ record batch, measure accuracy and throughput, export every exception, explain failures, and never let AI change a verified financial result.
@@ -586,7 +586,7 @@ and `tax` is validation metadata, so a later cash adjustment cannot make a histo
 wrong line correct.
 
 Historical integrity and operational closure are now separate metrics that never mix.
-`settlement_integrity_rate` stays 81.82% no matter how many exceptions close, and
+`settlement_integrity_rate` stays 73.81% no matter how many exceptions close, and
 `tests/test_lifecycle_runner.py` asserts it. The flagship closable exception is
 `SETTLEMENT_TOTAL_MISMATCH` — the one with a clean signed delta — while tax mismatches
 remain detected but not closable.

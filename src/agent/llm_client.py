@@ -12,7 +12,8 @@ GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai/"
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 # Groq retired llama-3.3-70b-versatile on 2026-08-16 — see console.groq.com/docs/deprecations
 DEFAULT_GROQ_MODEL = "openai/gpt-oss-120b"
-DEFAULT_GEMINI_MODEL = "gemini-2.5-flash"
+# gemini-2.5-flash was retired for new users; Google's own 404 names the replacement.
+DEFAULT_GEMINI_MODEL = "gemini-3.6-flash"
 DEFAULT_OPENROUTER_MODEL = "openai/gpt-oss-120b"
 LLM_TIMEOUT_SECONDS = float(os.getenv("LLM_TIMEOUT_SECONDS", "30"))
 

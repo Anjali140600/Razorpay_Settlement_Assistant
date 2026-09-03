@@ -1,26 +1,27 @@
 {
-  "run_id": "fe37cb7f-83ca-462a-b696-ee780027995b",
+  "run_id": "452be4ab-e48a-4b52-97ea-469180470581",
+  "cutoff": "2026-08-30",
   "metrics": {
-    "total_recon_lines": 173,
-    "total_payment_lines": 173,
-    "total_settlements": 33,
-    "processed_settlements": 33,
-    "verified_settlements": 27,
-    "needs_attention_settlements": 6,
-    "settlement_integrity_rate": 0.8181818181818182,
-    "batch_integrity_pass_rate": 0.9090909090909091,
-    "tax_line_pass_rate": 0.8787878787878788,
+    "total_recon_lines": 181,
+    "total_payment_lines": 181,
+    "total_settlements": 42,
+    "processed_settlements": 42,
+    "verified_settlements": 31,
+    "needs_attention_settlements": 11,
+    "settlement_integrity_rate": 0.7380952380952381,
+    "batch_integrity_pass_rate": 0.8095238095238095,
+    "tax_line_pass_rate": 0.9047619047619048,
     "labeled_control_accuracy": 1.0,
-    "labeled_control_count": 33,
+    "labeled_control_count": 42,
     "label_source": "contract_verifier_independent_of_generator",
-    "proven_settlements": 27,
-    "investigation_cases": 6,
-    "agent_mode": "react_groq",
-    "use_llm": true,
+    "proven_settlements": 31,
+    "investigation_cases": 11,
+    "agent_mode": "react_planner",
+    "use_llm": false,
     "llm_provider": "groq",
-    "llm_model": "openai/gpt-oss-120b",
-    "runtime_seconds": 0.001,
-    "throughput_lines_per_sec": 172432.4,
+    "llm_model": null,
+    "runtime_seconds": 0.0017,
+    "throughput_lines_per_sec": 108232.4,
     "false_auto_closes": 0,
     "holdout_settlements": 8,
     "holdout_recon_lines": 17,
@@ -185,272 +186,6 @@
     "lifecycle_source": "manual_fixtures",
     "lifecycle_description": "Hand-written two-cycle lifecycle fixtures. NOT produced by data/synthetic/generator.py \u2014 a generator that writes both the defect and its remedy would make the closure metric circular, proving code execution rather than matching quality."
   },
-  "settlements": [
-    {
-      "settlement_id": "setl_merchant_d2c_000",
-      "integrity_status": "VERIFIED",
-      "batch_integrity": "PASS",
-      "tax_lines": "PASS",
-      "amount_paise": 1816447,
-      "plain_issue": ""
-    },
-    {
-      "settlement_id": "setl_merchant_d2c_001",
-      "integrity_status": "VERIFIED",
-      "batch_integrity": "PASS",
-      "tax_lines": "PASS",
-      "amount_paise": 2011514,
-      "plain_issue": ""
-    },
-    {
-      "settlement_id": "setl_merchant_d2c_002",
-      "integrity_status": "VERIFIED",
-      "batch_integrity": "PASS",
-      "tax_lines": "PASS",
-      "amount_paise": 1331464,
-      "plain_issue": ""
-    },
-    {
-      "settlement_id": "setl_merchant_d2c_003",
-      "integrity_status": "VERIFIED",
-      "batch_integrity": "PASS",
-      "tax_lines": "PASS",
-      "amount_paise": 1200914,
-      "plain_issue": ""
-    },
-    {
-      "settlement_id": "setl_merchant_d2c_004",
-      "integrity_status": "VERIFIED",
-      "batch_integrity": "PASS",
-      "tax_lines": "PASS",
-      "amount_paise": 2199873,
-      "plain_issue": ""
-    },
-    {
-      "settlement_id": "setl_merchant_d2c_005",
-      "integrity_status": "VERIFIED",
-      "batch_integrity": "PASS",
-      "tax_lines": "PASS",
-      "amount_paise": 1594805,
-      "plain_issue": ""
-    },
-    {
-      "settlement_id": "setl_merchant_d2c_006",
-      "integrity_status": "VERIFIED",
-      "batch_integrity": "PASS",
-      "tax_lines": "PASS",
-      "amount_paise": 1110535,
-      "plain_issue": ""
-    },
-    {
-      "settlement_id": "setl_merchant_d2c_007",
-      "integrity_status": "VERIFIED",
-      "batch_integrity": "PASS",
-      "tax_lines": "PASS",
-      "amount_paise": 732391,
-      "plain_issue": ""
-    },
-    {
-      "settlement_id": "setl_merchant_d2c_008",
-      "integrity_status": "VERIFIED",
-      "batch_integrity": "PASS",
-      "tax_lines": "PASS",
-      "amount_paise": 922644,
-      "plain_issue": ""
-    },
-    {
-      "settlement_id": "setl_merchant_d2c_009",
-      "integrity_status": "VERIFIED",
-      "batch_integrity": "PASS",
-      "tax_lines": "PASS",
-      "amount_paise": 1821644,
-      "plain_issue": ""
-    },
-    {
-      "settlement_id": "setl_merchant_d2c_010",
-      "integrity_status": "VERIFIED",
-      "batch_integrity": "PASS",
-      "tax_lines": "PASS",
-      "amount_paise": 1301255,
-      "plain_issue": ""
-    },
-    {
-      "settlement_id": "setl_merchant_d2c_011",
-      "integrity_status": "VERIFIED",
-      "batch_integrity": "PASS",
-      "tax_lines": "PASS",
-      "amount_paise": 2100941,
-      "plain_issue": ""
-    },
-    {
-      "settlement_id": "setl_merchant_d2c_012",
-      "integrity_status": "VERIFIED",
-      "batch_integrity": "PASS",
-      "tax_lines": "PASS",
-      "amount_paise": 1848732,
-      "plain_issue": ""
-    },
-    {
-      "settlement_id": "setl_merchant_d2c_013",
-      "integrity_status": "VERIFIED",
-      "batch_integrity": "PASS",
-      "tax_lines": "PASS",
-      "amount_paise": 697441,
-      "plain_issue": ""
-    },
-    {
-      "settlement_id": "setl_merchant_d2c_014",
-      "integrity_status": "VERIFIED",
-      "batch_integrity": "PASS",
-      "tax_lines": "PASS",
-      "amount_paise": 1845255,
-      "plain_issue": ""
-    },
-    {
-      "settlement_id": "setl_merchant_d2c_015",
-      "integrity_status": "VERIFIED",
-      "batch_integrity": "PASS",
-      "tax_lines": "PASS",
-      "amount_paise": 2002845,
-      "plain_issue": ""
-    },
-    {
-      "settlement_id": "setl_merchant_d2c_016",
-      "integrity_status": "VERIFIED",
-      "batch_integrity": "PASS",
-      "tax_lines": "PASS",
-      "amount_paise": 2139530,
-      "plain_issue": ""
-    },
-    {
-      "settlement_id": "setl_merchant_d2c_017",
-      "integrity_status": "VERIFIED",
-      "batch_integrity": "PASS",
-      "tax_lines": "PASS",
-      "amount_paise": 2129361,
-      "plain_issue": ""
-    },
-    {
-      "settlement_id": "setl_messy_flash_sale",
-      "integrity_status": "VERIFIED",
-      "batch_integrity": "PASS",
-      "tax_lines": "PASS",
-      "amount_paise": 202131,
-      "plain_issue": ""
-    },
-    {
-      "settlement_id": "setl_messy_saas",
-      "integrity_status": "VERIFIED",
-      "batch_integrity": "PASS",
-      "tax_lines": "PASS",
-      "amount_paise": 3419804,
-      "plain_issue": ""
-    },
-    {
-      "settlement_id": "setl_messy_marketplace",
-      "integrity_status": "VERIFIED",
-      "batch_integrity": "PASS",
-      "tax_lines": "PASS",
-      "amount_paise": 7652000,
-      "plain_issue": ""
-    },
-    {
-      "settlement_id": "setl_messy_refund_day",
-      "integrity_status": "VERIFIED",
-      "batch_integrity": "PASS",
-      "tax_lines": "PASS",
-      "amount_paise": 3948200,
-      "plain_issue": ""
-    },
-    {
-      "settlement_id": "setl_messy_chargebacks",
-      "integrity_status": "VERIFIED",
-      "batch_integrity": "PASS",
-      "tax_lines": "PASS",
-      "amount_paise": 1828500,
-      "plain_issue": ""
-    },
-    {
-      "settlement_id": "setl_messy_zero_fee_upi",
-      "integrity_status": "VERIFIED",
-      "batch_integrity": "PASS",
-      "tax_lines": "PASS",
-      "amount_paise": 576253,
-      "plain_issue": ""
-    },
-    {
-      "settlement_id": "setl_messy_rounding_ok",
-      "integrity_status": "VERIFIED",
-      "batch_integrity": "PASS",
-      "tax_lines": "PASS",
-      "amount_paise": 166600,
-      "plain_issue": ""
-    },
-    {
-      "settlement_id": "setl_messy_b2b",
-      "integrity_status": "VERIFIED",
-      "batch_integrity": "PASS",
-      "tax_lines": "PASS",
-      "amount_paise": 20972000,
-      "plain_issue": ""
-    },
-    {
-      "settlement_id": "setl_messy_combo",
-      "integrity_status": "VERIFIED",
-      "batch_integrity": "PASS",
-      "tax_lines": "PASS",
-      "amount_paise": 3915900,
-      "plain_issue": ""
-    },
-    {
-      "settlement_id": "setl_tax_mismatch",
-      "integrity_status": "NEEDS_ATTENTION",
-      "batch_integrity": "PASS",
-      "tax_lines": "FAIL",
-      "amount_paise": 1813000,
-      "plain_issue": "Fees & GST issue on pay_setl_tax_mismatch_1"
-    },
-    {
-      "settlement_id": "setl_batch_mismatch",
-      "integrity_status": "NEEDS_ATTENTION",
-      "batch_integrity": "FAIL",
-      "tax_lines": "PASS",
-      "amount_paise": 4264000,
-      "plain_issue": "Settlement batch amounts don't add up"
-    },
-    {
-      "settlement_id": "setl_fee_semantic_error",
-      "integrity_status": "NEEDS_ATTENTION",
-      "batch_integrity": "FAIL",
-      "tax_lines": "FAIL",
-      "amount_paise": 14800,
-      "plain_issue": "Settlement batch amounts don't add up"
-    },
-    {
-      "settlement_id": "setl_refund_wrong_amount",
-      "integrity_status": "NEEDS_ATTENTION",
-      "batch_integrity": "PASS",
-      "tax_lines": "FAIL",
-      "amount_paise": 1957000,
-      "plain_issue": "Fees & GST issue on rfnd_setl_refund_wrong_amount_0"
-    },
-    {
-      "settlement_id": "setl_transfer_tax_wrong",
-      "integrity_status": "NEEDS_ATTENTION",
-      "batch_integrity": "PASS",
-      "tax_lines": "FAIL",
-      "amount_paise": 4084000,
-      "plain_issue": "Fees & GST issue on trf_setl_transfer_tax_wrong_0"
-    },
-    {
-      "settlement_id": "setl_orphan_header_drift",
-      "integrity_status": "NEEDS_ATTENTION",
-      "batch_integrity": "FAIL",
-      "tax_lines": "PASS",
-      "amount_paise": 4420000,
-      "plain_issue": "Settlement batch amounts don't add up"
-    }
-  ],
   "exceptions": [
     {
       "settlement_id": "setl_tax_mismatch",
@@ -530,6 +265,59 @@
         "pay_setl_orphan_header_drift_0",
         "pay_setl_orphan_header_drift_1"
       ]
+    },
+    {
+      "settlement_id": "setl_short_compensated",
+      "control_type": "batch_integrity",
+      "exception_code": "SETTLEMENT_TOTAL_MISMATCH",
+      "message": "Batch mismatch: lines net 1176000 != header 1179000",
+      "integrity_status": "NEEDS_ATTENTION",
+      "plain_issue": "Settlement batch amounts don't add up",
+      "evidence_ids": [
+        "pay_setl_short_compensated_0"
+      ]
+    },
+    {
+      "settlement_id": "setl_ambiguous_shortfall",
+      "control_type": "batch_integrity",
+      "exception_code": "SETTLEMENT_TOTAL_MISMATCH",
+      "message": "Batch mismatch: lines net 882000 != header 886000",
+      "integrity_status": "NEEDS_ATTENTION",
+      "plain_issue": "Settlement batch amounts don't add up",
+      "evidence_ids": [
+        "pay_setl_ambiguous_shortfall_0"
+      ]
+    },
+    {
+      "settlement_id": "setl_unreconciled_shortfall",
+      "control_type": "batch_integrity",
+      "exception_code": "SETTLEMENT_TOTAL_MISMATCH",
+      "message": "Batch mismatch: lines net 686000 != header 688500",
+      "integrity_status": "NEEDS_ATTENTION",
+      "plain_issue": "Settlement batch amounts don't add up",
+      "evidence_ids": [
+        "pay_setl_unreconciled_shortfall_0"
+      ]
+    },
+    {
+      "settlement_id": "setl_over_settled",
+      "control_type": "batch_integrity",
+      "exception_code": "SETTLEMENT_TOTAL_MISMATCH",
+      "message": "Batch mismatch: lines net 1960000 != header 1958500",
+      "integrity_status": "NEEDS_ATTENTION",
+      "plain_issue": "Settlement batch amounts don't add up",
+      "evidence_ids": [
+        "pay_setl_over_settled_0"
+      ]
+    },
+    {
+      "settlement_id": "setl_no_recon_lines",
+      "control_type": "batch_integrity",
+      "exception_code": "SETTLEMENT_TOTAL_MISMATCH",
+      "message": "No recon lines for settlement",
+      "integrity_status": "NEEDS_ATTENTION",
+      "plain_issue": "Settlement batch amounts don't add up",
+      "evidence_ids": []
     }
   ]
 }

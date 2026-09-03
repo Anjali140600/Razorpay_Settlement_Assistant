@@ -1,26 +1,26 @@
 {
-  "run_id": "fe37cb7f-83ca-462a-b696-ee780027995b",
+  "run_id": "5c0b7c6b-38a2-4ece-880b-44a4e94ee1a6",
   "metrics": {
-    "total_recon_lines": 173,
-    "total_payment_lines": 173,
-    "total_settlements": 33,
-    "processed_settlements": 33,
-    "verified_settlements": 27,
-    "needs_attention_settlements": 6,
-    "settlement_integrity_rate": 0.8181818181818182,
-    "batch_integrity_pass_rate": 0.9090909090909091,
-    "tax_line_pass_rate": 0.8787878787878788,
+    "total_recon_lines": 181,
+    "total_payment_lines": 181,
+    "total_settlements": 42,
+    "processed_settlements": 42,
+    "verified_settlements": 31,
+    "needs_attention_settlements": 11,
+    "settlement_integrity_rate": 0.7380952380952381,
+    "batch_integrity_pass_rate": 0.8095238095238095,
+    "tax_line_pass_rate": 0.9047619047619048,
     "labeled_control_accuracy": 1.0,
-    "labeled_control_count": 33,
+    "labeled_control_count": 42,
     "label_source": "contract_verifier_independent_of_generator",
-    "proven_settlements": 27,
-    "investigation_cases": 6,
+    "proven_settlements": 31,
+    "investigation_cases": 11,
     "agent_mode": "react_groq",
     "use_llm": true,
     "llm_provider": "groq",
     "llm_model": "openai/gpt-oss-120b",
-    "runtime_seconds": 0.001,
-    "throughput_lines_per_sec": 172432.4,
+    "runtime_seconds": 0.0013,
+    "throughput_lines_per_sec": 142922.9,
     "false_auto_closes": 0,
     "holdout_settlements": 8,
     "holdout_recon_lines": 17,
@@ -449,6 +449,78 @@
       "tax_lines": "PASS",
       "amount_paise": 4420000,
       "plain_issue": "Settlement batch amounts don't add up"
+    },
+    {
+      "settlement_id": "setl_short_compensated",
+      "integrity_status": "NEEDS_ATTENTION",
+      "batch_integrity": "FAIL",
+      "tax_lines": "PASS",
+      "amount_paise": 1179000,
+      "plain_issue": "Settlement batch amounts don't add up"
+    },
+    {
+      "settlement_id": "setl_short_compensated_fix",
+      "integrity_status": "VERIFIED",
+      "batch_integrity": "PASS",
+      "tax_lines": "PASS",
+      "amount_paise": 3000,
+      "plain_issue": ""
+    },
+    {
+      "settlement_id": "setl_ambiguous_shortfall",
+      "integrity_status": "NEEDS_ATTENTION",
+      "batch_integrity": "FAIL",
+      "tax_lines": "PASS",
+      "amount_paise": 886000,
+      "plain_issue": "Settlement batch amounts don't add up"
+    },
+    {
+      "settlement_id": "setl_ambiguous_fix_a",
+      "integrity_status": "VERIFIED",
+      "batch_integrity": "PASS",
+      "tax_lines": "PASS",
+      "amount_paise": 4000,
+      "plain_issue": ""
+    },
+    {
+      "settlement_id": "setl_ambiguous_fix_b",
+      "integrity_status": "VERIFIED",
+      "batch_integrity": "PASS",
+      "tax_lines": "PASS",
+      "amount_paise": 4000,
+      "plain_issue": ""
+    },
+    {
+      "settlement_id": "setl_unreconciled_shortfall",
+      "integrity_status": "NEEDS_ATTENTION",
+      "batch_integrity": "FAIL",
+      "tax_lines": "PASS",
+      "amount_paise": 688500,
+      "plain_issue": "Settlement batch amounts don't add up"
+    },
+    {
+      "settlement_id": "setl_unreconciled_fix",
+      "integrity_status": "VERIFIED",
+      "batch_integrity": "PASS",
+      "tax_lines": "PASS",
+      "amount_paise": 2499,
+      "plain_issue": ""
+    },
+    {
+      "settlement_id": "setl_over_settled",
+      "integrity_status": "NEEDS_ATTENTION",
+      "batch_integrity": "FAIL",
+      "tax_lines": "PASS",
+      "amount_paise": 1958500,
+      "plain_issue": "Settlement batch amounts don't add up"
+    },
+    {
+      "settlement_id": "setl_no_recon_lines",
+      "integrity_status": "NEEDS_ATTENTION",
+      "batch_integrity": "FAIL",
+      "tax_lines": "PASS",
+      "amount_paise": 5000,
+      "plain_issue": "Settlement batch amounts don't add up"
     }
   ],
   "exceptions": [
@@ -530,6 +602,59 @@
         "pay_setl_orphan_header_drift_0",
         "pay_setl_orphan_header_drift_1"
       ]
+    },
+    {
+      "settlement_id": "setl_short_compensated",
+      "control_type": "batch_integrity",
+      "exception_code": "SETTLEMENT_TOTAL_MISMATCH",
+      "message": "Batch mismatch: lines net 1176000 != header 1179000",
+      "integrity_status": "NEEDS_ATTENTION",
+      "plain_issue": "Settlement batch amounts don't add up",
+      "evidence_ids": [
+        "pay_setl_short_compensated_0"
+      ]
+    },
+    {
+      "settlement_id": "setl_ambiguous_shortfall",
+      "control_type": "batch_integrity",
+      "exception_code": "SETTLEMENT_TOTAL_MISMATCH",
+      "message": "Batch mismatch: lines net 882000 != header 886000",
+      "integrity_status": "NEEDS_ATTENTION",
+      "plain_issue": "Settlement batch amounts don't add up",
+      "evidence_ids": [
+        "pay_setl_ambiguous_shortfall_0"
+      ]
+    },
+    {
+      "settlement_id": "setl_unreconciled_shortfall",
+      "control_type": "batch_integrity",
+      "exception_code": "SETTLEMENT_TOTAL_MISMATCH",
+      "message": "Batch mismatch: lines net 686000 != header 688500",
+      "integrity_status": "NEEDS_ATTENTION",
+      "plain_issue": "Settlement batch amounts don't add up",
+      "evidence_ids": [
+        "pay_setl_unreconciled_shortfall_0"
+      ]
+    },
+    {
+      "settlement_id": "setl_over_settled",
+      "control_type": "batch_integrity",
+      "exception_code": "SETTLEMENT_TOTAL_MISMATCH",
+      "message": "Batch mismatch: lines net 1960000 != header 1958500",
+      "integrity_status": "NEEDS_ATTENTION",
+      "plain_issue": "Settlement batch amounts don't add up",
+      "evidence_ids": [
+        "pay_setl_over_settled_0"
+      ]
+    },
+    {
+      "settlement_id": "setl_no_recon_lines",
+      "control_type": "batch_integrity",
+      "exception_code": "SETTLEMENT_TOTAL_MISMATCH",
+      "message": "No recon lines for settlement",
+      "integrity_status": "NEEDS_ATTENTION",
+      "plain_issue": "Settlement batch amounts don't add up",
+      "evidence_ids": []
     }
   ]
 }

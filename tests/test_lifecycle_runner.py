@@ -43,7 +43,7 @@ def test_integrity_rate_is_unchanged_by_closure():
     engine = ReconciliationEngine(Path("data/synthetic/demo"))
     engine.load_sources()
     run = engine.run()
-    assert run.metrics["settlement_integrity_rate"] == 27 / 33
+    assert run.metrics["settlement_integrity_rate"] == 31 / 42
     assert run.metrics["lifecycle_exceptions_closed"] == 1
 
 
@@ -52,4 +52,4 @@ def test_lifecycle_does_not_add_settlements_to_the_primary_run():
     engine = ReconciliationEngine(Path("data/synthetic/demo"))
     engine.load_sources()
     run = engine.run()
-    assert run.metrics["total_settlements"] == 33
+    assert run.metrics["total_settlements"] == 42

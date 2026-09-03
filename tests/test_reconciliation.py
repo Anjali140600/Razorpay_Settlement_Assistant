@@ -115,7 +115,7 @@ def test_settlement_integrity_on_demo(demo_dir: Path):
     assert run.metrics["processed_settlements"] >= 25
     assert run.metrics["verified_settlements"] >= 20
     assert run.metrics["needs_attention_settlements"] >= 4
-    assert 0.75 <= run.metrics["settlement_integrity_rate"] <= 0.95
+    assert 0.65 <= run.metrics["settlement_integrity_rate"] <= 0.90
 
 
 def test_tax_mismatch_flagged(demo_dir: Path):

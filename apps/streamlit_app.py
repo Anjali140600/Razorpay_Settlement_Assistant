@@ -3,9 +3,7 @@
 from __future__ import annotations
 
 import json
-import re
 import sys
-import time
 from datetime import date
 from pathlib import Path
 
@@ -16,23 +14,9 @@ sys.path.insert(0, str(ROOT))
 
 import src.config  # noqa: F401
 
+from apps.universal_assistant import render_universal_assistant_launcher
 from data.synthetic.generator import generate_demo_dataset
 from src.agent.llm_client import should_use_llm, get_llm_model, llm_providers_available
-from src.agent.settlement_qa import (
-    MAX_QUESTIONS_PER_SESSION,
-    PRESET_INTENTS,
-    answer_free_text,
-    answer_pending_query,
-    answer_preset,
-    filter_response_text,
-    last_llm_error,
-    needs_support_ticket,
-    question_hash,
-    raise_support_ticket,
-    sanitize_question,
-    submit_compensation_claim,
-    validate_question_input,
-)
 from src.agent.triage import TriageResult, TriageVerdict
 from src.agent.triage import classify as classify_triage
 from src.connectors.loaders import load_pending_payments
@@ -479,6 +463,38 @@ CSS = """
     color: var(--text-muted) !important;
     margin: 0.5rem 0 0 !important;
   }
+
+  /* The universal assistant is the only persistent chat entry point. */
+  .st-key-universal_assistant_launcher {
+    position: fixed;
+    right: 1.5rem;
+    bottom: 1.5rem;
+    z-index: 1000000;
+  }
+
+  .st-key-universal_assistant_launcher button {
+    width: 3.6rem !important;
+    height: 3.6rem !important;
+    min-height: 3.6rem !important;
+    padding: 0 !important;
+    border-radius: 999px !important;
+    box-shadow: 0 10px 28px rgba(37, 99, 235, 0.38) !important;
+  }
+
+  .st-key-universal_assistant_launcher button span {
+    font-size: 1.65rem !important;
+  }
+
+  .st-key-universal_assistant_thread {
+    background: #f8fafc !important;
+  }
+
+  @media (max-width: 640px) {
+    .st-key-universal_assistant_launcher {
+      right: 1rem;
+      bottom: 1rem;
+    }
+  }
 </style>
 """
 
@@ -499,11 +515,7 @@ def format_date(dt) -> str:
 
 
 def render_pending_payment_panel(payment) -> None:
-    """Minimal single-turn Q&A for a payment with no settlement yet.
-
-    No ticket/compensation CTAs here: those concepts don't apply until a
-    settlement exists to escalate or compensate against.
-    """
+    """Render the detail summary for a payment with no settlement yet."""
     st.markdown('<p class="section-label">Pending payment detail</p>', unsafe_allow_html=True)
     st.subheader(f"{format_inr(payment.amount)} · captured {format_date(payment.captured_at)}")
     st.markdown(
@@ -513,24 +525,6 @@ def render_pending_payment_panel(payment) -> None:
     if payment.expected_settlement_at:
         st.caption(f"Expected settlement: {payment.expected_settlement_at.strftime('%d %b %Y')} (calendar days)")
 
-    question = st.chat_input(
-        "Ask about this payment (e.g. \"where is my money\" or \"can I get this instantly\")…",
-        key=f"pending_chat_input_{payment.entity_id}",
-    )
-    history_key = f"pending_chat_{payment.entity_id}"
-    if history_key not in st.session_state:
-        st.session_state[history_key] = []
-
-    if question:
-        ans = answer_pending_query(payment, question)
-        st.session_state[history_key].append((question, filter_response_text(ans.answer_text)))
-
-    for q, a in st.session_state[history_key]:
-        with st.chat_message("user"):
-            st.markdown(q)
-        with st.chat_message("assistant", avatar=ASSISTANT_AVATAR):
-            st.markdown(a)
-
 
 def run_check() -> None:
     engine = ReconciliationEngine(DEMO_DIR, eval_date=date(2026, 8, 30), use_llm=False)
@@ -538,8 +532,6 @@ def run_check() -> None:
     run = engine.run()
     st.session_state["engine"] = engine
     st.session_state["run"] = run
-    if "qa_count" not in st.session_state:
-        st.session_state["qa_count"] = 0
 
 
 def check_name(ctrl) -> str:
@@ -582,451 +574,10 @@ def render_check(ctrl) -> None:
         st.markdown(f'<div class="check-detail">{ctrl.message}</div>', unsafe_allow_html=True)
 
 
-def agent_mode_badge(mode: str) -> str:
-    labels = {
-        "groq": ("Answered via Groq", "badge-groq"),
-        "gemini": ("Answered via Gemini", "badge-gemini"),
-        "openrouter": ("Answered via OpenRouter", "badge-openrouter"),
-        "keyword": ("Answered via rules", "badge-keyword"),
-    }
-    label, css = labels.get(mode, ("Answered via rules", "badge-keyword"))
-    return f'<span class="badge {css}">{label}</span>'
-
-
-ASSISTANT_AVATAR = ":material/support_agent:"
-STEP_PACING_SECONDS = 0.18
-STREAM_WORD_DELAY = 0.014
-
-WELCOME_MESSAGE = (
-    "Hi — I'm your settlement assistant.\n\n"
-    "Ask me why your payout differs from your sales, how fees and GST were charged, "
-    "or whether this settlement adds up. I answer only from your Razorpay settlement "
-    "data and show the evidence behind every answer."
-)
-
-TOOL_STEP_LABELS = {
-    "fetch_settlement": "Read the settlement header and UTR",
-    "fetch_recon_lines": "Pulled every recon line in this batch",
-    "calculate_batch": "Recomputed batch totals from the recon lines",
-    "explain_fee_tax": "Checked fee and GST on each payment line",
-    "search_settlements": "Searched your settlements",
-    "search_by_amount": "Searched settlements and payments by amount",
-    "search_by_date": "Searched settlements by date",
-    "get_policy": "Applied the settlement verification policy",
-    "support_guidance": "Checked what support can do here",
-    "escalate_to_support": "Prepared a support escalation",
-    "finish_answer": "Wrote the answer from the evidence",
-    "plain_text_answer": "Wrote the answer from the evidence",
-}
-
-
-def get_chat_history(settlement_id: str) -> list[dict]:
-    if "chat_histories" not in st.session_state:
-        st.session_state["chat_histories"] = {}
-    histories = st.session_state["chat_histories"]
-    if settlement_id not in histories:
-        histories[settlement_id] = [{"role": "assistant", "content": WELCOME_MESSAGE, "meta": {"welcome": True}}]
-    return histories[settlement_id]
-
-
-def append_chat_message(settlement_id: str, role: str, content: str, meta: dict | None = None) -> None:
-    get_chat_history(settlement_id).append({"role": role, "content": content, "meta": meta or {}})
-
-
-def ticket_offer_pending(settlement_id: str) -> bool:
-    """True when our last reply offered the Raise-ticket button and it is still unused."""
-    if settlement_id in st.session_state["raised_tickets"]:
-        return False
-    for msg in reversed(get_chat_history(settlement_id)):
-        if msg["role"] != "assistant":
-            continue
-        return bool((msg.get("meta") or {}).get("offer_raise_ticket"))
-    return False
-
-
 def compute_triage(settlement_id: str, decision, batches: dict) -> TriageResult | None:
     if not settlement_id or settlement_id not in batches or not decision:
         return None
     return classify_triage(settlement_id, batches[settlement_id], decision, batches)
-
-
-def claim_offer_pending(settlement_id: str) -> bool:
-    """True when our last reply offered the compensation-claim button and it is still unused."""
-    if settlement_id in st.session_state["filed_claims"]:
-        return False
-    for msg in reversed(get_chat_history(settlement_id)):
-        if msg["role"] != "assistant":
-            continue
-        return bool((msg.get("meta") or {}).get("offer_compensation"))
-    return False
-
-
-def envelope_to_meta(ans, *, ai_requested: bool = False) -> dict:
-    mode = getattr(ans, "agent_mode", "keyword")
-    return {
-        "agent_mode": mode,
-        "escalated_to_support": getattr(ans, "escalated_to_support", False),
-        "offer_raise_ticket": getattr(ans, "offer_raise_ticket", False),
-        "support_ticket_id": getattr(ans, "support_ticket_id", None),
-        "triage_verdict": getattr(ans, "triage_verdict", ""),
-        "offer_compensation": getattr(ans, "offer_compensation", False),
-        "compensation_amount_display": getattr(ans, "compensation_amount_display", None),
-        "compensation_claim_id": getattr(ans, "compensation_claim_id", None),
-        "citations": getattr(ans, "citations", None) or [],
-        "tool_trace": getattr(ans, "tool_trace", None),
-        "abstained": getattr(ans, "abstained", False),
-        "fallback_reason": last_llm_error() if (ai_requested and mode == "keyword") else None,
-    }
-
-
-def apply_raised_ticket(settlement_id: str, decision, batches: dict) -> None:
-    """Raise one ticket and keep the header + chat buttons in the same state."""
-    ticket_env = raise_support_ticket(settlement_id, decision, batches)
-    st.session_state["raised_tickets"][settlement_id] = ticket_env
-    append_chat_message(
-        settlement_id,
-        "assistant",
-        ticket_env.answer_text,
-        envelope_to_meta(ticket_env),
-    )
-    st.rerun()
-
-
-def apply_filed_claim(settlement_id: str, decision, batches: dict) -> None:
-    """File one compensation claim — only ever called from an explicit button click,
-    and re-triages first so a claim can never be filed on stale evidence."""
-    triage = compute_triage(settlement_id, decision, batches)
-    if triage is None or triage.verdict != TriageVerdict.AUTO_COMPENSABLE:
-        st.rerun()
-        return
-    claim_env = submit_compensation_claim(settlement_id, triage, batches)
-    st.session_state["filed_claims"][settlement_id] = claim_env
-    append_chat_message(
-        settlement_id,
-        "assistant",
-        claim_env.answer_text,
-        envelope_to_meta(claim_env),
-    )
-    st.rerun()
-
-
-def render_raise_ticket_button(settlement_id: str, decision, batches: dict, key: str) -> None:
-    if st.button("Raise ticket with Razorpay support", type="primary", key=key, width="stretch"):
-        apply_raised_ticket(settlement_id, decision, batches)
-
-
-def render_compensation_button(settlement_id: str, decision, batches: dict, key: str, label: str) -> None:
-    if st.button(label, type="primary", key=key, width="stretch"):
-        apply_filed_claim(settlement_id, decision, batches)
-
-
-def render_ticket_cta(meta: dict, settlement_id: str, decision, batches: dict, key: str) -> None:
-    # The backend envelope is the single source of truth on whether to offer a ticket —
-    # it also fires for a merchant-reported issue (e.g. bank non-receipt) on a settlement
-    # whose own controls all pass, which needs_support_ticket(decision) would say no to.
-    if not meta.get("offer_raise_ticket"):
-        return
-    raised = st.session_state["raised_tickets"].get(settlement_id)
-    if raised:
-        st.markdown(
-            f'<div class="ticket-raised">Ticket raised — <code>{raised.support_ticket_id}</code></div>',
-            unsafe_allow_html=True,
-        )
-        return
-    render_raise_ticket_button(settlement_id, decision, batches, key)
-
-
-def render_compensation_cta(meta: dict, settlement_id: str, decision, batches: dict, key: str) -> None:
-    """Two explicit buttons — consent, not a default. Nothing files until one is clicked."""
-    filed = st.session_state["filed_claims"].get(settlement_id)
-    if filed:
-        st.markdown(
-            f'<div class="ticket-raised">Compensation claim filed — <code>{filed.compensation_claim_id}</code></div>',
-            unsafe_allow_html=True,
-        )
-        return
-    if not meta.get("offer_compensation"):
-        return
-    amount = meta.get("compensation_amount_display") or "the confirmed amount"
-    col1, col2 = st.columns(2)
-    with col1:
-        render_compensation_button(settlement_id, decision, batches, f"{key}_claim", f"Submit claim for {amount}")
-    with col2:
-        render_raise_ticket_button(settlement_id, decision, batches, f"{key}_escalate")
-
-
-def resolve_answer(
-    settlement_id: str,
-    question: str,
-    preset_id: str | None,
-    decision,
-    batches: dict,
-) -> tuple[str, dict]:
-    """Run the Q&A pipeline and return the merchant-facing answer plus its metadata."""
-    if preset_id:
-        ans = answer_preset(preset_id, settlement_id, batches)
-        return filter_response_text(ans.answer_text), envelope_to_meta(ans)
-
-    ok, err = validate_question_input(question)
-    if not ok:
-        return err, {"abstained": True, "agent_mode": "keyword"}
-
-    raised_ticket_id = (
-        st.session_state["raised_tickets"][settlement_id].support_ticket_id
-        if settlement_id in st.session_state["raised_tickets"]
-        else None
-    )
-    raised_claim_id = (
-        st.session_state["filed_claims"][settlement_id].compensation_claim_id
-        if settlement_id in st.session_state["filed_claims"]
-        else None
-    )
-    ans = answer_free_text(
-        question,
-        settlement_id,
-        batches,
-        use_llm=st.session_state["use_llm_qa"],
-        settlement_decision=decision,
-        raised_ticket_id=raised_ticket_id,
-        ticket_offer_pending=ticket_offer_pending(settlement_id),
-        raised_claim_id=raised_claim_id,
-        compensation_offer_pending=claim_offer_pending(settlement_id),
-    )
-    _ = question_hash(sanitize_question(question))
-    ai_requested = bool(st.session_state["use_llm_qa"])
-    return filter_response_text(ans.answer_text), envelope_to_meta(ans, ai_requested=ai_requested)
-
-
-def planned_steps(preset_id: str | None, use_llm: bool) -> list[str]:
-    """Work the assistant is about to do, shown live so the wait is explainable."""
-    steps = [
-        ":material/receipt_long: Opening the settlement header and UTR",
-        ":material/calculate: Recomputing the batch total from recon lines",
-    ]
-    if preset_id in (None, "why_net_less", "breakdown_fees", "is_consistent"):
-        steps.append(":material/percent: Checking fee and GST on every payment line")
-    steps.append(
-        ":material/smart_toy: Asking the AI model to phrase the verified figures"
-        if use_llm
-        else ":material/rule: Writing the answer from the verified figures"
-    )
-    return steps
-
-
-def humanize_trace_step(step: str) -> str | None:
-    """Turn an internal trace entry into a line a merchant can read."""
-    if step.startswith("provider=") or step.startswith("model="):
-        return None
-    name = step.split(": ", 1)[-1].strip()
-    return TOOL_STEP_LABELS.get(name)
-
-
-def stream_words(text: str):
-    for token in re.split(r"(\s+)", text):
-        if not token:
-            continue
-        yield token
-        if token.strip():
-            time.sleep(STREAM_WORD_DELAY)
-
-
-def render_message_meta(meta: dict, *, show_trace: bool = True) -> None:
-    if meta.get("welcome"):
-        return
-    badges = agent_mode_badge(meta.get("agent_mode", "keyword"))
-    if meta.get("escalated_to_support"):
-        badges += '<span class="badge badge-escalated">Escalated to Razorpay support</span>'
-    st.markdown(badges, unsafe_allow_html=True)
-    if meta.get("support_ticket_id"):
-        st.markdown(f"**Ticket ID:** `{meta['support_ticket_id']}`")
-    if meta.get("compensation_claim_id"):
-        st.markdown(f"**Claim ID:** `{meta['compensation_claim_id']}`")
-    if meta.get("citations"):
-        st.caption(f"Evidence: {', '.join(meta['citations'])}")
-    if meta.get("fallback_reason"):
-        st.caption(
-            f"AI answer not used — {meta['fallback_reason']}. "
-            "Answered from your settlement data using rules."
-        )
-    if show_trace and meta.get("tool_trace"):
-        with st.expander("How this answer was built", icon=":material/manage_search:"):
-            for step in meta["tool_trace"]:
-                st.text(step)
-
-
-def render_chat_message(
-    msg: dict,
-    *,
-    settlement_id: str,
-    decision,
-    batches: dict,
-    msg_idx: int,
-) -> None:
-    is_assistant = msg["role"] == "assistant"
-    with st.chat_message(msg["role"], avatar=ASSISTANT_AVATAR if is_assistant else None):
-        st.markdown(msg["content"])
-        meta = msg.get("meta") or {}
-        if is_assistant:
-            render_message_meta(meta)
-            if meta.get("offer_compensation") or settlement_id in st.session_state["filed_claims"]:
-                render_compensation_cta(
-                    meta, settlement_id, decision, batches, key=f"compensate_chat_{settlement_id}_{msg_idx}"
-                )
-            else:
-                render_ticket_cta(
-                    meta,
-                    settlement_id,
-                    decision,
-                    batches,
-                    key=f"raise_ticket_chat_{settlement_id}_{msg_idx}",
-                )
-
-
-def run_live_exchange(
-    settlement_id: str,
-    question: str,
-    preset_id: str | None,
-    decision,
-    batches: dict,
-) -> None:
-    """Show the question, the assistant's working steps, then stream the answer."""
-    append_chat_message(settlement_id, "user", question)
-    with st.chat_message("user"):
-        st.markdown(question)
-
-    use_llm = bool(st.session_state["use_llm_qa"]) and not preset_id
-
-    with st.chat_message("assistant", avatar=ASSISTANT_AVATAR):
-        started = time.perf_counter()
-        status = st.status("Checking your settlement data…", expanded=True)
-        with status:
-            for step in planned_steps(preset_id, use_llm):
-                st.markdown(step)
-                time.sleep(STEP_PACING_SECONDS)
-
-        with st.skeleton(height=72):
-            text, meta = resolve_answer(settlement_id, question, preset_id, decision, batches)
-
-        with status:
-            done = [
-                label
-                for label in (humanize_trace_step(s) for s in meta.get("tool_trace") or [])
-                if label
-            ]
-            for label in dict.fromkeys(done):
-                st.markdown(f":material/check_circle: {label}")
-        status.update(
-            label=f"Checked your settlement data in {time.perf_counter() - started:.1f}s",
-            state="complete",
-            expanded=False,
-        )
-
-        st.write_stream(stream_words(text))
-        render_message_meta(meta, show_trace=False)
-        if meta.get("offer_compensation") or settlement_id in st.session_state["filed_claims"]:
-            render_compensation_cta(
-                meta, settlement_id, decision, batches,
-                key=f"compensate_live_{settlement_id}_{st.session_state['qa_count']}",
-            )
-        else:
-            render_ticket_cta(
-                meta,
-                settlement_id,
-                decision,
-                batches,
-                key=f"raise_ticket_live_{settlement_id}_{st.session_state['qa_count']}",
-            )
-
-    append_chat_message(settlement_id, "assistant", text, meta)
-    st.session_state["qa_count"] += 1
-
-
-def render_settlement_chatbot(
-    settlement_id: str,
-    decision,
-    batches: dict,
-) -> None:
-    """Chat surface: agent header, scrollable thread, quick replies, composer."""
-    identity, actions = st.columns([4, 1], vertical_alignment="center")
-    with identity:
-        st.markdown(
-            '<div class="chat-header">'
-            '<div class="chat-avatar">₹</div>'
-            "<div>"
-            '<p class="chat-name">Settlement assistant</p>'
-            '<p class="chat-presence"><span class="presence-dot"></span>'
-            "Online · answers only from your Razorpay settlement data</p>"
-            "</div></div>",
-            unsafe_allow_html=True,
-        )
-    with actions:
-        if st.button(
-            "New chat",
-            icon=":material/refresh:",
-            key=f"reset_chat_{settlement_id}",
-            width="stretch",
-        ):
-            st.session_state.get("chat_histories", {}).pop(settlement_id, None)
-            st.rerun()
-
-    thread = st.container(height=430, border=True, key="chat_thread")
-
-    # MAX_QUESTIONS_PER_SESSION == 0 disables the cap (see settlement_qa).
-    asked_out = (
-        MAX_QUESTIONS_PER_SESSION > 0
-        and st.session_state["qa_count"] >= MAX_QUESTIONS_PER_SESSION
-    )
-    pending: tuple[str, str | None] | None = None
-
-    with st.container(horizontal=True, gap="small"):
-        for preset_id, preset in PRESET_INTENTS.items():
-            if st.button(
-                preset["label"],
-                key=f"chip_{settlement_id}_{preset_id}",
-                disabled=asked_out,
-            ):
-                pending = (preset["label"], preset_id)
-
-    prompt = st.chat_input(
-        "Ask about this settlement…",
-        key=f"chat_input_{settlement_id}",
-        disabled=asked_out,
-        submit_mode="disable",
-    )
-    if prompt and pending is None:
-        pending = (prompt, None)
-
-    if asked_out:
-        st.markdown(
-            f'<p class="chat-hint">Question limit reached '
-            f"({MAX_QUESTIONS_PER_SESSION} per session). Refresh the page to reset.</p>",
-            unsafe_allow_html=True,
-        )
-    elif MAX_QUESTIONS_PER_SESSION > 0:
-        left = MAX_QUESTIONS_PER_SESSION - st.session_state["qa_count"]
-        st.markdown(
-            f'<p class="chat-hint">{left} of {MAX_QUESTIONS_PER_SESSION} questions left '
-            "this session · every answer cites the settlement data it used</p>",
-            unsafe_allow_html=True,
-        )
-    else:
-        st.markdown(
-            '<p class="chat-hint">Every answer cites the settlement data it used</p>',
-            unsafe_allow_html=True,
-        )
-
-    with thread:
-        for idx, msg in enumerate(get_chat_history(settlement_id)):
-            render_chat_message(
-                msg,
-                settlement_id=settlement_id,
-                decision=decision,
-                batches=batches,
-                msg_idx=idx,
-            )
-        if pending:
-            run_live_exchange(settlement_id, pending[0], pending[1], decision, batches)
-            st.rerun()
 
 
 st.set_page_config(page_title="Razorpay Settlement Assistant", page_icon="₹", layout="wide")
@@ -1036,8 +587,6 @@ ensure_demo_data()
 if "run" not in st.session_state:
     run_check()
 
-if "qa_count" not in st.session_state:
-    st.session_state["qa_count"] = 0
 if "selected_settlement" not in st.session_state:
     st.session_state["selected_settlement"] = None
 if "use_llm_qa" not in st.session_state:
@@ -1046,6 +595,15 @@ if "raised_tickets" not in st.session_state:
     st.session_state["raised_tickets"] = {}
 if "filed_claims" not in st.session_state:
     st.session_state["filed_claims"] = {}
+
+assistant_focus_request = st.session_state.pop("assistant_focus_request", None)
+if assistant_focus_request:
+    if assistant_focus_request.get("kind") == "settlement":
+        st.session_state["browse_category"] = "Settlements"
+        st.session_state["settlement_filter"] = "All"
+        st.session_state["selected_settlement"] = assistant_focus_request.get("subject_id")
+    elif assistant_focus_request.get("kind") == "payment":
+        st.session_state["browse_category"] = "Unsettled Payments"
 
 engine: ReconciliationEngine = st.session_state["engine"]
 run = st.session_state["run"]
@@ -1109,7 +667,7 @@ with st.container(border=True):
 
 selected_id = None
 selected_pending_id = None
-pending_payments: list = []
+pending_payments = load_pending_payments(DEMO_DIR / "recon.json", DEMO_DIR / "manifest.json")
 
 if browse_category == "Settlements":
     with st.container(border=True):
@@ -1145,11 +703,16 @@ if browse_category == "Settlements":
                         default_idx = i
                         break
 
+            if assistant_focus_request and assistant_focus_request.get("kind") == "settlement":
+                requested_id = assistant_focus_request.get("subject_id")
+                requested_label = next((label for label, sid in options.items() if sid == requested_id), None)
+                if requested_label:
+                    st.session_state["settlement_picker"] = requested_label
+
             picked = st.selectbox("Settlements", labels, index=default_idx, label_visibility="collapsed", key="settlement_picker")
             selected_id = options[picked]
             st.session_state["selected_settlement"] = selected_id
 else:
-    pending_payments = load_pending_payments(DEMO_DIR / "recon.json", DEMO_DIR / "manifest.json")
     with st.container(border=True):
         st.markdown('<p class="section-label">Pending payments (not yet settled)</p>', unsafe_allow_html=True)
         if not pending_payments:
@@ -1160,6 +723,14 @@ else:
                 for p in pending_payments
             }
             pending_labels = ["— none selected —"] + list(pending_options.keys())
+            if assistant_focus_request and assistant_focus_request.get("kind") == "payment":
+                requested_id = assistant_focus_request.get("subject_id")
+                requested_label = next(
+                    (label for label, pid in pending_options.items() if pid == requested_id),
+                    None,
+                )
+                if requested_label:
+                    st.session_state["pending_payment_picker"] = requested_label
             picked_pending = st.selectbox(
                 "Pending payments", pending_labels, label_visibility="collapsed", key="pending_payment_picker"
             )
@@ -1221,18 +792,10 @@ if selected_id:
                 '<div class="support-panel">'
                 '<p class="section-label">Compensation available</p>'
                 f"<p>{triage.detail} You choose what happens next — "
-                "submit a claim now, or send it to Razorpay support instead.</p>"
+                "open the support assistant to review a claim or contact Razorpay support.</p>"
                 "</div>",
                 unsafe_allow_html=True,
             )
-            col1, col2 = st.columns(2)
-            with col1:
-                render_compensation_button(
-                    selected_id, decision, batches,
-                    f"claim_header_{selected_id}", f"Submit claim for {triage.delta_display}",
-                )
-            with col2:
-                render_raise_ticket_button(selected_id, decision, batches, f"raise_ticket_header_{selected_id}")
         elif raised:
             st.markdown(
                 '<div class="support-panel">'
@@ -1248,19 +811,10 @@ if selected_id:
                 '<div class="support-panel">'
                 '<p class="section-label">Razorpay support</p>'
                 "<p>This issue cannot be fixed from your data alone. "
-                "Use the button below to send the calculation breakdown to Razorpay support.</p>"
+                "Open the support assistant to review a prefilled ticket with this calculation breakdown.</p>"
                 "</div>",
                 unsafe_allow_html=True,
             )
-            render_raise_ticket_button(
-                selected_id,
-                decision,
-                batches,
-                key=f"raise_ticket_header_{selected_id}",
-            )
-
-    with st.container(border=True):
-        render_settlement_chatbot(selected_id, decision, batches)
 
     with st.expander("See payments", expanded=False):
         st.dataframe(
@@ -1358,3 +912,10 @@ with st.expander("Download report", expanded=False):
             json.dumps(export, indent=2, default=str)
         )
         st.success("Wrote sample-output/latest_run.json")
+
+render_universal_assistant_launcher(
+    batches=engine.batch_map(),
+    decisions=list(run.settlement_decisions),
+    pending_payments=pending_payments,
+    use_llm=bool(st.session_state["use_llm_qa"]),
+)

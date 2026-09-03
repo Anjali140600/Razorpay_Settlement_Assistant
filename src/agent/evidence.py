@@ -1,4 +1,4 @@
-"""Shared read-only evidence tools for settlement Q&A and investigation."""
+"""Shared read-only evidence tools for settlement Q&A."""
 
 from __future__ import annotations
 
@@ -7,6 +7,9 @@ from typing import Any
 from src.domain.formatting import format_inr
 from src.domain.models import SettlementBatch, SettlementLine
 from src.domain.razorpay_contract import expected_tax_paise
+
+NEAREST_MATCHES = 5
+PAYMENT_PREVIEW = 3
 
 
 class SettlementEvidenceTools:
@@ -93,6 +96,62 @@ class SettlementEvidenceTools:
             )
         return {"settlement_id": settlement_id, "breakdown": breakdown}
 
+    def search_by_amount(self, amount_paise: int, limit: int = NEAREST_MATCHES) -> dict[str, Any]:
+        """Find settlements and payment lines worth exactly amount_paise.
+
+        Only the loaded batches are scanned, so both the exact hits and the
+        "closest" fallback stay inside this merchant's own Razorpay data.
+        """
+        settlements_exact: list[dict[str, Any]] = []
+        payments_exact: list[dict[str, Any]] = []
+        near: list[tuple[int, int, dict[str, Any]]] = []
+
+        for b in self.batches.values():
+            settlement_hit = _settlement_hit(b)
+            if b.amount == amount_paise:
+                settlements_exact.append(settlement_hit)
+            else:
+                near.append((abs(b.amount - amount_paise), 1, settlement_hit))
+            for line in b.lines:
+                payment_hit = _payment_hit(line)
+                if line.amount == amount_paise:
+                    payments_exact.append(payment_hit)
+                else:
+                    near.append((abs(line.amount - amount_paise), 0, payment_hit))
+
+        # Payments rank ahead of settlements at the same distance: a merchant
+        # asking about an amount we cannot match wants the payment lines.
+        near.sort(key=lambda item: (item[0], item[1]))
+        nearest = [{**hit, "delta_paise": delta, "delta_display": format_inr(delta)} for delta, _, hit in near[:limit]]
+
+        return {
+            "amount_paise": amount_paise,
+            "amount_display": format_inr(amount_paise),
+            "settlements_exact": settlements_exact[:limit],
+            "payments_exact": payments_exact[:limit],
+            "nearest": nearest,
+        }
+
+    def search_by_date(self, month: int, day: int, year: int | None = None) -> dict[str, Any]:
+        """Settlements processed on a calendar day. Year is optional — '23 aug' has none."""
+        matches = [
+            _settlement_hit(b)
+            for b in self.batches.values()
+            if b.processed_at is not None
+            and b.processed_at.month == month
+            and b.processed_at.day == day
+            and (year is None or b.processed_at.year == year)
+        ]
+        matches.sort(key=lambda hit: hit["settlement_id"])
+        return {"month": month, "day": day, "year": year, "matches": matches}
+
+    def payment_preview(self, settlement_id: str, limit: int = PAYMENT_PREVIEW) -> list[dict[str, Any]]:
+        """First few money lines on a settlement, for context under a match."""
+        b = self.batches.get(settlement_id)
+        if not b:
+            return []
+        return [_payment_hit(l) for l in b.lines[:limit]]
+
     def search_settlements(self, query: str) -> dict[str, Any]:
         q = query.upper().replace(" ", "")
         matches = []
@@ -126,6 +185,8 @@ QA_TOOL_ALLOWLIST = {
     "calculate_batch",
     "explain_fee_tax",
     "search_settlements",
+    "search_by_amount",
+    "search_by_date",
     "get_policy",
     "finish_answer",
 }
@@ -144,11 +205,56 @@ def execute_qa_tool(tools: SettlementEvidenceTools, tool_name: str, args: dict[s
         return tools.explain_fee_tax(args["settlement_id"], args.get("entity_id"))
     if tool_name == "search_settlements":
         return tools.search_settlements(args.get("query", ""))
+    if tool_name == "search_by_amount":
+        amount = _as_int(args.get("amount_paise"))
+        if amount is None:
+            return {"error": "bad_argument", "argument": "amount_paise"}
+        return tools.search_by_amount(amount, _as_int(args.get("limit")) or NEAREST_MATCHES)
+    if tool_name == "search_by_date":
+        month, day = _as_int(args.get("month")), _as_int(args.get("day"))
+        if month is None or day is None:
+            return {"error": "bad_argument", "argument": "month/day"}
+        return tools.search_by_date(month, day, _as_int(args.get("year")))
     if tool_name == "get_policy":
         return tools.get_policy(args.get("policy_id", "settlement_assurance"))
     if tool_name == "finish_answer":
         return {"status": "ok"}
     return {"error": "tool_not_allowed", "tool": tool_name}
+
+
+def _as_int(value: Any) -> int | None:
+    """Models send numbers as strings often enough to be worth coercing."""
+    try:
+        return int(str(value).strip())
+    except (TypeError, ValueError):
+        return None
+
+
+def _settlement_hit(batch: SettlementBatch) -> dict[str, Any]:
+    return {
+        "kind": "settlement",
+        "settlement_id": batch.settlement_id,
+        "amount_paise": batch.amount,
+        "amount_display": format_inr(batch.amount),
+        "utr": batch.utr,
+        "status": batch.status,
+        "processed_on": batch.processed_at.date().isoformat() if batch.processed_at else None,
+    }
+
+
+def _payment_hit(line: SettlementLine) -> dict[str, Any]:
+    return {
+        "kind": "payment",
+        "entity_id": line.entity_id,
+        "settlement_id": line.settlement_id,
+        "type": line.line_type,
+        "amount_paise": line.amount,
+        "amount_display": format_inr(line.amount),
+        "fee_paise": line.fee,
+        "fee_display": format_inr(line.fee),
+        "tax_paise": line.tax,
+        "tax_display": format_inr(line.tax),
+    }
 
 
 def _line_payload(line: SettlementLine) -> dict[str, Any]:
