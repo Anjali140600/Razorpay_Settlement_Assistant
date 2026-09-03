@@ -1,11 +1,11 @@
 {
   "version": "2",
-  "generated_at": "2026-09-01T10:23:11.238562Z",
+  "generated_at": "2026-09-03T12:39:01.068594Z",
   "hackathon_track": "04_ai_finance_controller",
   "label_source": "independent_verifier",
   "label_verification": {
-    "matches": 33,
-    "total": 33
+    "matches": 42,
+    "total": 42
   },
   "dataset_profile": "realistic_merchant_mess",
   "requirements": {
@@ -17,20 +17,25 @@
       "setl_fee_semantic_error",
       "setl_refund_wrong_amount",
       "setl_transfer_tax_wrong",
-      "setl_orphan_header_drift"
+      "setl_orphan_header_drift",
+      "setl_short_compensated",
+      "setl_ambiguous_shortfall",
+      "setl_unreconciled_shortfall",
+      "setl_over_settled",
+      "setl_no_recon_lines"
     ]
   },
   "summary": {
-    "total_settlements": 33,
-    "total_recon_lines": 173,
-    "verified": 27,
-    "needs_attention": 6,
-    "integrity_rate": 0.8182,
+    "total_settlements": 42,
+    "total_recon_lines": 184,
+    "verified": 31,
+    "needs_attention": 11,
+    "integrity_rate": 0.7381,
     "line_types": {
-      "payment": 155,
+      "payment": 162,
       "refund": 10,
       "transfer": 4,
-      "adjustment": 4
+      "adjustment": 8
     },
     "merchant_profiles": [
       "d2c_volume",
@@ -50,7 +55,12 @@
       "fee_semantic",
       "refund_wrong",
       "transfer_tax",
-      "header_drift"
+      "header_drift",
+      "already_compensated",
+      "ambiguous_adjustment",
+      "unreconciled_adjustment",
+      "over_settlement",
+      "no_recon_lines"
     ]
   },
   "labels": {
@@ -326,6 +336,83 @@
       "expected_net_paise": 4410000,
       "header_amount_paise": 4420000,
       "reason": "Header 4420000 != recon net 4410000"
+    },
+    "setl_short_compensated": {
+      "status": "needs_attention",
+      "batch_integrity": "fail",
+      "tax_lines": "pass",
+      "label_source": "independent_verifier",
+      "expected_net_paise": 1176000,
+      "header_amount_paise": 1179000,
+      "reason": "Header 1179000 != recon net 1176000"
+    },
+    "setl_short_compensated_fix": {
+      "status": "verified",
+      "batch_integrity": "pass",
+      "tax_lines": "pass",
+      "label_source": "independent_verifier",
+      "expected_net_paise": 3000,
+      "header_amount_paise": 3000
+    },
+    "setl_ambiguous_shortfall": {
+      "status": "needs_attention",
+      "batch_integrity": "fail",
+      "tax_lines": "pass",
+      "label_source": "independent_verifier",
+      "expected_net_paise": 882000,
+      "header_amount_paise": 886000,
+      "reason": "Header 886000 != recon net 882000"
+    },
+    "setl_ambiguous_fix_a": {
+      "status": "verified",
+      "batch_integrity": "pass",
+      "tax_lines": "pass",
+      "label_source": "independent_verifier",
+      "expected_net_paise": 4000,
+      "header_amount_paise": 4000
+    },
+    "setl_ambiguous_fix_b": {
+      "status": "verified",
+      "batch_integrity": "pass",
+      "tax_lines": "pass",
+      "label_source": "independent_verifier",
+      "expected_net_paise": 4000,
+      "header_amount_paise": 4000
+    },
+    "setl_unreconciled_shortfall": {
+      "status": "needs_attention",
+      "batch_integrity": "fail",
+      "tax_lines": "pass",
+      "label_source": "independent_verifier",
+      "expected_net_paise": 686000,
+      "header_amount_paise": 688500,
+      "reason": "Header 688500 != recon net 686000"
+    },
+    "setl_unreconciled_fix": {
+      "status": "verified",
+      "batch_integrity": "pass",
+      "tax_lines": "pass",
+      "label_source": "independent_verifier",
+      "expected_net_paise": 2499,
+      "header_amount_paise": 2499
+    },
+    "setl_over_settled": {
+      "status": "needs_attention",
+      "batch_integrity": "fail",
+      "tax_lines": "pass",
+      "label_source": "independent_verifier",
+      "expected_net_paise": 1960000,
+      "header_amount_paise": 1958500,
+      "reason": "Header 1958500 != recon net 1960000"
+    },
+    "setl_no_recon_lines": {
+      "status": "needs_attention",
+      "batch_integrity": "fail",
+      "tax_lines": "pass",
+      "label_source": "independent_verifier",
+      "expected_net_paise": 0,
+      "header_amount_paise": 5000,
+      "reason": "Header 5000 != recon net 0"
     }
   },
   "holdout_note": "Independent holdout eval: data/fixtures/holdout/ \u2014 NOT from this generator"

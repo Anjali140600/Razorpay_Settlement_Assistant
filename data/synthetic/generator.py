@@ -105,6 +105,46 @@ def generate_demo_dataset(output_dir: Path, seed: int = 42, repo_root: Path | No
         )
         return eid
 
+    def add_pending_payment(
+        captured_day: int,
+        amount_inr: float,
+        *,
+        idx: int,
+        instant_eligible: str,
+        method: str | None = None,
+    ) -> None:
+        """A payment captured but not yet settled — no settlement_id, no UTR."""
+        nonlocal line_counter, payment_counter
+        amount = paise(amount_inr)
+        payment_counter += 1
+        line_counter += 1
+        eid = f"pay_pending_{idx:03d}"
+        cycle_type = "instant_eligible" if instant_eligible == "yes" else "standard"
+        recon_lines.append(
+            {
+                "currency": "INR",
+                "on_hold": False,
+                "settled": False,
+                "settlement_id": None,
+                "settlement_utr": None,
+                "settled_at": None,
+                "entity_id": eid,
+                "type": "payment",
+                "debit": 0,
+                "credit": 0,
+                "amount": amount,
+                "fee": 0,
+                "tax": 0,
+                "created_at": _ts(captured_day, hour=random.randint(0, 23)),
+                "captured_at": _ts(captured_day, hour=random.randint(0, 23)),
+                "payment_id": None,
+                "order_id": f"ord_pending_{idx}",
+                "method": method or random.choice(METHODS),
+                "cycle_type": cycle_type,
+                "instant_eligible": instant_eligible,
+            }
+        )
+
     def add_refund(
         settlement_id: str,
         utr: str,
@@ -181,6 +221,7 @@ def generate_demo_dataset(output_dir: Path, seed: int = 42, repo_root: Path | No
         idx: int,
         *,
         debit: bool = False,
+        reference_settlement_id: str | None = None,
     ) -> None:
         nonlocal line_counter
         amount = paise(amount_inr)
@@ -199,6 +240,7 @@ def generate_demo_dataset(output_dir: Path, seed: int = 42, repo_root: Path | No
                 "created_at": _ts(proc_day - 1, use_unix=False),
                 "description": description,
                 "method": None,
+                "reference_settlement_id": reference_settlement_id,
             }
         )
 
@@ -315,6 +357,11 @@ def generate_demo_dataset(output_dir: Path, seed: int = 42, repo_root: Path | No
     add_adjustment(sid, utr, proc_day, 199, "Promo credit", 0)
     finalize_settlement(sid, utr, proc_day)
 
+    # --- Profile: pending payments (captured, not yet settled) ---
+    add_pending_payment(30, 499.0, idx=0, instant_eligible="no", method="upi")
+    add_pending_payment(31, 12500.0, idx=1, instant_eligible="yes", method="card")
+    add_pending_payment(32, 899.0, idx=2, instant_eligible="unknown", method="upi")
+
     # ========== FAILURES (honest exception list) ==========
 
     # GST wrong on fee line
@@ -373,6 +420,73 @@ def generate_demo_dataset(output_dir: Path, seed: int = 42, repo_root: Path | No
     true_net = batch_net_paise([l for l in recon_lines if l["settlement_id"] == sid])
     settlements.append({"id": sid, "amount": true_net + 10000, "utr": utr, "status": "processed", "processed_at": _ts(proc_day)})
 
+    # ========== TRIAGE SCENARIOS (query auto-resolution vs support escalation) ==========
+    # Every shortfall below is the same SETTLEMENT_TOTAL_MISMATCH shape as setl_batch_mismatch
+    # above; what differs is the adjustment evidence elsewhere in the same recon feed, which is
+    # exactly what src/agent/triage.py inspects to decide auto-compensable vs needs-support.
+
+    # Clean shortfall, later compensated by a matching adjustment on another settlement.
+    sid = "setl_short_compensated"
+    utr = "UTR20260803333CMP1"
+    proc_day = 23
+    add_payment(sid, utr, proc_day, 12000, pay_idx=0)
+    true_net = batch_net_paise([l for l in recon_lines if l["settlement_id"] == sid])
+    settlements.append({"id": sid, "amount": true_net + 3000, "utr": utr, "status": "processed", "processed_at": _ts(proc_day)})
+
+    fix_sid = "setl_short_compensated_fix"
+    fix_utr = "UTR20260803333CMP2"
+    fix_day = proc_day + 1
+    add_adjustment(fix_sid, fix_utr, fix_day, 30.0, f"Recon correction for {sid}", 0, reference_settlement_id=sid)
+    finalize_settlement(fix_sid, fix_utr, fix_day)
+
+    # Clean shortfall, but two adjustments elsewhere both cleanly reference it — ambiguous,
+    # so neither auto-binds and a person has to pick the right one.
+    sid = "setl_ambiguous_shortfall"
+    utr = "UTR20260802222AMB1"
+    proc_day = 25
+    add_payment(sid, utr, proc_day, 9000, pay_idx=0)
+    true_net = batch_net_paise([l for l in recon_lines if l["settlement_id"] == sid])
+    settlements.append({"id": sid, "amount": true_net + 4000, "utr": utr, "status": "processed", "processed_at": _ts(proc_day)})
+
+    fix_a_sid, fix_a_utr = "setl_ambiguous_fix_a", "UTR20260802222AMB2"
+    add_adjustment(fix_a_sid, fix_a_utr, proc_day + 1, 40.0, f"Correction for {sid}", 0, reference_settlement_id=sid)
+    finalize_settlement(fix_a_sid, fix_a_utr, proc_day + 1)
+
+    fix_b_sid, fix_b_utr = "setl_ambiguous_fix_b", "UTR20260802222AMB3"
+    add_adjustment(fix_b_sid, fix_b_utr, proc_day + 1, 40.0, f"Correction for {sid}", 0, reference_settlement_id=sid)
+    finalize_settlement(fix_b_sid, fix_b_utr, proc_day + 1)
+
+    # Clean shortfall; an adjustment elsewhere names this settlement but the amount is one
+    # paise short — it doesn't cleanly reconcile, so it needs a person, not an auto-claim.
+    sid = "setl_unreconciled_shortfall"
+    utr = "UTR20260801111UNR1"
+    proc_day = 27
+    add_payment(sid, utr, proc_day, 7000, pay_idx=0)
+    true_net = batch_net_paise([l for l in recon_lines if l["settlement_id"] == sid])
+    settlements.append({"id": sid, "amount": true_net + 2500, "utr": utr, "status": "processed", "processed_at": _ts(proc_day)})
+
+    fix_sid = "setl_unreconciled_fix"
+    fix_utr = "UTR20260801111UNR2"
+    fix_day = proc_day + 1
+    add_adjustment(fix_sid, fix_utr, fix_day, 24.99, f"Partial correction for {sid}", 0, reference_settlement_id=sid)
+    finalize_settlement(fix_sid, fix_utr, fix_day)
+
+    # Lines net MORE than the header — the merchant received extra. That's Razorpay's
+    # recovery to pursue, never a claim the agent offers to file.
+    sid = "setl_over_settled"
+    utr = "UTR20260800000OVR1"
+    proc_day = 29
+    add_payment(sid, utr, proc_day, 20000, pay_idx=0)
+    true_net = batch_net_paise([l for l in recon_lines if l["settlement_id"] == sid])
+    settlements.append({"id": sid, "amount": true_net - 1500, "utr": utr, "status": "processed", "processed_at": _ts(proc_day)})
+
+    # A settlement header with no recon lines at all — no evidence to compute a compensable
+    # amount from, so it can never be auto-compensable regardless of the header value.
+    sid = "setl_no_recon_lines"
+    utr = "UTR20260899999ZER1"
+    proc_day = 31
+    settlements.append({"id": sid, "amount": 5000, "utr": utr, "status": "processed", "processed_at": _ts(proc_day)})
+
     # --- Labels via independent verifier (not inline generator truth) ---
     eval_labels: dict[str, dict] = {}
     for s in settlements:
@@ -415,7 +529,8 @@ def generate_demo_dataset(output_dir: Path, seed: int = 42, repo_root: Path | No
             ],
             "failure_types": [
                 "tax_mismatch", "batch_mismatch", "fee_semantic", "refund_wrong",
-                "transfer_tax", "header_drift",
+                "transfer_tax", "header_drift", "already_compensated", "ambiguous_adjustment",
+                "unreconciled_adjustment", "over_settlement", "no_recon_lines",
             ],
         },
         "labels": eval_labels,
@@ -436,6 +551,8 @@ def generate_demo_dataset(output_dir: Path, seed: int = 42, repo_root: Path | No
         "exception_settlements": needs,
         "exception_ids": exception_ids,
         "unix_timestamp_lines": sum(1 for l in recon_lines if isinstance(l.get("created_at"), int)),
+        "pending_payment_lines": sum(1 for l in recon_lines if l.get("settlement_id") is None),
+        "settlement_cycle": {"standard_days": 2, "instant_available": True},
     }
     (output_dir / "manifest.json").write_text(json.dumps(manifest, indent=2))
     return manifest
