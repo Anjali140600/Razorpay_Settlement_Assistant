@@ -10,6 +10,8 @@ from datetime import date
 from typing import Any
 
 from src.agent.evidence import SettlementEvidenceTools, execute_qa_tool
+from src.agent.triage import TriageResult, TriageVerdict
+from src.agent.triage import classify as classify_triage
 from src.agent.llm_client import (
     assistant_message_for_api,
     create_llm_client,
@@ -22,6 +24,7 @@ from src.domain.models import (
     AnswerEnvelope,
     ControlDecision,
     ControlStatus,
+    PendingPayment,
     SettlementBatch,
     SettlementCloseDecision,
     SettlementIntegrityStatus,
@@ -62,6 +65,22 @@ WHAT_TO_DO_RE = re.compile(
     re.I,
 )
 
+# The merchant is reporting something no settlement/recon control can see: Razorpay's own
+# data says this settlement processed, but the money never showed up in their bank. This
+# can never be proven or disproven from settlements+recon alone — it always escalates,
+# regardless of whether every control on this settlement passes.
+BANK_NON_RECEIPT_RE = re.compile(
+    r"\b(?:haven'?t|didn'?t|did not|not) (?:receiv\w+|got|get|credit\w*)\b"
+    r"[^.?!]{0,40}\b(?:bank|account|money|payment|amount|fund\w*)\b"
+    r"|\bbank\b[^.?!]{0,30}\b(?:say\w*|show\w*|claim\w*|told)[^.?!]{0,20}"
+    r"\b(?:not|never|didn'?t|did not)\s+(?:receiv\w+|got|credit\w*)\b"
+    r"|\bmoney\s+(?:not|never|hasn'?t)\s+(?:reach\w*|arriv\w*|credit\w*)\b"
+    r"|\bno\s+bank\s+credit\b"
+    r"|\bnot\s+credited\s+to\s+(?:my|our)\s+(?:bank\s+)?account\b"
+    r"|\bwhere\s+is\s+my\s+money\b",
+    re.I,
+)
+
 # "yes", "go ahead", "raise it" only mean escalate right after we offered a ticket.
 _AFFIRMATIVE_TOKENS = frozenset(
     {"yes", "yeah", "yep", "yup", "sure", "ok", "okay", "proceed", "confirm",
@@ -72,14 +91,32 @@ _FILLER_TOKENS = frozenset(
 )
 
 
-def _is_ticket_confirmation(question: str) -> bool:
-    """A short affirmative reply to our own Raise-ticket offer."""
+def _is_short_affirmative(question: str) -> bool:
+    """A short affirmative reply to something we just offered ("yes", "go ahead")."""
     words = re.findall(r"[a-z']+", question.lower())
     if not words or len(words) > 6:
         return False
     if not all(w in _AFFIRMATIVE_TOKENS or w in _FILLER_TOKENS for w in words):
         return False
     return any(w in _AFFIRMATIVE_TOKENS for w in words)
+
+
+# A merchant accepting the compensation-claim half of a two-choice offer ("file the
+# claim", "compensate me", "pay me the shortfall") — distinct from escalating.
+_CLAIM_VERB = r"(?:file|submit|process|claim|pay|compensat\w*|reimburse\w*)"
+COMPENSATE_RE = re.compile(
+    rf"\b{_CLAIM_VERB}\b[^.?!]{{0,24}}\b(?:claim|compensation|shortfall|me|it)\b"
+    r"|\bcompensat\w*\b"
+    r"|\breimburse\w*\b"
+    r"|\bmake (?:it|this) good\b",
+    re.I,
+)
+
+
+def _wants_compensation(question: str, offer_pending: bool = False) -> bool:
+    if COMPENSATE_RE.search(question):
+        return True
+    return offer_pending and _is_short_affirmative(question)
 
 
 # Refusal is for attempts to change a verdict or read secrets — not for merely
@@ -124,7 +161,9 @@ _EVIDENCE_TOOL_NAMES = frozenset(
     }
 )
 
-SAFETY_INTENTS = frozenset({"refuse", "escalate", "support_guidance"})
+SAFETY_INTENTS = frozenset(
+    {"refuse", "escalate", "support_guidance", "compensate", "clarify_choice", "bank_non_receipt"}
+)
 
 _MONTHS = {
     "jan": 1,
@@ -171,7 +210,10 @@ _ENTITY_TOKEN = re.compile(r"\b(?:pay|rfnd|trf|setl|adj)_[a-z0-9_]+\b|\bUTR[A-Z0
 
 
 def sanitize_question(text: str) -> str:
-    cleaned = text.replace("\x00", "").strip()
+    # Phone keyboards and browser autocorrect send curly quotes ("can't" -> "can’t").
+    # Every intent regex below is written with a straight apostrophe, so without this
+    # normalization those regexes silently miss real user input.
+    cleaned = text.replace("\x00", "").replace("’", "'").replace("‘", "'").strip()
     return cleaned[:MAX_QUESTION_LEN]
 
 
@@ -523,7 +565,7 @@ def raise_support_ticket(
 def _wants_escalation(question: str, ticket_offer_pending: bool = False) -> bool:
     if ESCALATION_RE.search(question):
         return True
-    return ticket_offer_pending and _is_ticket_confirmation(question)
+    return ticket_offer_pending and _is_short_affirmative(question)
 
 
 def _wants_guidance(question: str) -> bool:
@@ -535,6 +577,7 @@ def _support_guidance_answer(
     decision: SettlementCloseDecision,
     ticket_already_raised: bool,
     ticket_id: str | None,
+    triage_verdict: str = "",
 ) -> AnswerEnvelope:
     if ticket_already_raised and ticket_id:
         text = (
@@ -555,6 +598,7 @@ def _support_guidance_answer(
         citations=[settlement_id],
         settlement_id=settlement_id,
         offer_raise_ticket=offer,
+        triage_verdict=triage_verdict,
         tool_trace=["support_guidance"],
         agent_mode="keyword",
     )
@@ -575,8 +619,162 @@ def _no_ticket_needed_answer(settlement_id: str | None) -> AnswerEnvelope:
         ),
         citations=[settlement_id] if settlement_id else [],
         settlement_id=settlement_id,
+        triage_verdict=TriageVerdict.NO_ISSUE.value,
         tool_trace=["escalate_not_needed"],
         agent_mode="keyword",
+    )
+
+
+def _bank_non_receipt_answer(
+    settlement_id: str,
+    decision: SettlementCloseDecision,
+    ticket_already_raised: bool,
+    ticket_id: str | None,
+) -> AnswerEnvelope:
+    """A merchant reporting non-receipt at the bank is always outside what settlement +
+    recon data can confirm or rule out — this escalates regardless of triage verdict,
+    including on a fully verified settlement."""
+    if ticket_already_raised and ticket_id:
+        text = (
+            f"A support ticket is already raised for this settlement (Ticket ID: {ticket_id}). "
+            "Razorpay support will check the bank transfer status directly."
+        )
+        offer = False
+    else:
+        status = "verified" if decision.integrity_status == SettlementIntegrityStatus.VERIFIED else "flagged"
+        text = (
+            f"Your Razorpay settlement data shows this settlement as {status} — that only covers "
+            "batch amounts and fee/GST lines, not whether the bank actually credited the amount. "
+            "This app doesn't have access to your bank statement, so it can neither confirm nor "
+            "rule out what you're describing.\n\n"
+            "Use **Raise ticket with Razorpay support** below so Razorpay can check the bank "
+            "transfer status directly — that's the one thing only they can see."
+        )
+        offer = True
+    return AnswerEnvelope(
+        answer_text=text,
+        citations=[settlement_id],
+        settlement_id=settlement_id,
+        offer_raise_ticket=offer,
+        support_ticket_id=ticket_id if ticket_already_raised else None,
+        tool_trace=["bank_non_receipt"],
+        agent_mode="keyword",
+    )
+
+
+def _triage_for(
+    settlement_id: str | None,
+    batches: dict[str, SettlementBatch],
+    decision: SettlementCloseDecision | None,
+) -> TriageResult | None:
+    if not settlement_id or settlement_id not in batches or not decision:
+        return None
+    return classify_triage(settlement_id, batches[settlement_id], decision, batches)
+
+
+def _compensation_claim_id(settlement_id: str, exception_id: str) -> str:
+    """Keyed by the exception's own facts, not the question text — so a rephrased
+    'yes' or a re-asked question can never file a second claim for the same shortfall."""
+    digest = hashlib.sha256(f"{settlement_id}:{exception_id}".encode()).hexdigest()[:4]
+    return f"RZP-CLAIM-{settlement_id}-{digest}"
+
+
+def submit_compensation_claim(
+    settlement_id: str,
+    triage: TriageResult,
+    batches: dict[str, SettlementBatch],
+) -> AnswerEnvelope:
+    """File a compensation claim for an AUTO_COMPENSABLE shortfall.
+
+    Only ever called after an explicit merchant consent turn (see the "compensate"
+    intent in `_keyword_answer`) — the agent never files this on its own. This is a
+    claim sent to Razorpay support, not a payment: the agent has no authority to move
+    money and never touches the merchant ledger.
+    """
+    if triage.verdict != TriageVerdict.AUTO_COMPENSABLE or not triage.exception_id:
+        raise ValueError("compensation claims require an AUTO_COMPENSABLE triage result")
+    claim_id = _compensation_claim_id(settlement_id, triage.exception_id)
+    batch = batches[settlement_id]
+    text = (
+        "A compensation claim has been submitted to Razorpay for this confirmed shortfall.\n\n"
+        f"Claim ID: {claim_id}\n"
+        f"Settlement: {settlement_id} | UTR: {batch.utr or '—'}\n"
+        f"Amount: {triage.delta_display}\n\n"
+        f"{triage.detail}\n\n"
+        "Expected response: Razorpay will credit this amount or explain why it does not apply. "
+        "This is a claim, not a payment — the agent cannot move money on its own."
+    )
+    return AnswerEnvelope(
+        answer_text=text,
+        citations=triage.citations,
+        settlement_id=settlement_id,
+        triage_verdict=triage.verdict.value,
+        compensation_claim_id=claim_id,
+        compensation_amount_display=triage.delta_display,
+        tool_trace=["submit_compensation_claim"],
+        agent_mode="keyword",
+    )
+
+
+def _triage_answer(
+    settlement_id: str,
+    triage: TriageResult,
+    decision: SettlementCloseDecision,
+    ticket_already_raised: bool,
+    ticket_id: str | None,
+    claim_already_filed: bool,
+    claim_id: str | None,
+) -> AnswerEnvelope:
+    """The proactive, triage-driven guidance answer — offers exactly what this
+    verdict allows, never more: AUTO_COMPENSABLE gets both choices, NEEDS_SUPPORT
+    gets the ticket only, and nothing is filed until the merchant picks one."""
+    if triage.verdict == TriageVerdict.NO_ISSUE:
+        return _no_ticket_needed_answer(settlement_id)
+
+    if triage.verdict == TriageVerdict.ALREADY_COMPENSATED:
+        return AnswerEnvelope(
+            answer_text=f"{triage.detail} There is no confirmed issue left to escalate or claim.",
+            citations=triage.citations,
+            settlement_id=settlement_id,
+            triage_verdict=triage.verdict.value,
+            tool_trace=["triage_already_compensated"],
+            agent_mode="keyword",
+        )
+
+    if triage.verdict == TriageVerdict.AUTO_COMPENSABLE:
+        if claim_already_filed and claim_id:
+            text = (
+                f"A compensation claim is already filed for this settlement (Claim ID: {claim_id}). "
+                "Razorpay will credit the amount or explain why it doesn't apply."
+            )
+            return AnswerEnvelope(
+                answer_text=text,
+                citations=triage.citations,
+                settlement_id=settlement_id,
+                triage_verdict=triage.verdict.value,
+                compensation_claim_id=claim_id,
+                tool_trace=["triage_claim_already_filed"],
+                agent_mode="keyword",
+            )
+        text = (
+            f"{triage.detail} You can **submit a compensation claim for {triage.delta_display} now**, "
+            "or **raise this to the Razorpay support team** instead — your call."
+        )
+        return AnswerEnvelope(
+            answer_text=text,
+            citations=triage.citations,
+            settlement_id=settlement_id,
+            triage_verdict=triage.verdict.value,
+            offer_compensation=True,
+            offer_raise_ticket=True,
+            compensation_amount_display=triage.delta_display,
+            tool_trace=["triage_offer_choice"],
+            agent_mode="keyword",
+        )
+
+    # NEEDS_SUPPORT
+    return _support_guidance_answer(
+        settlement_id, decision, ticket_already_raised, ticket_id, triage_verdict=triage.verdict.value
     )
 
 
@@ -806,16 +1004,33 @@ def _build_escalation_message(
     batch = batches[settlement_id]
     ticket_id = _support_ticket_id(settlement_id, question)
     failed = _failed_controls(decision)
-    calc_lines = "\n".join(_format_calc_block(c) for c in failed)
-    text = (
-        "We've confirmed a genuine settlement issue that cannot be resolved from your data alone.\n\n"
-        "A support ticket has been raised and escalated to the Razorpay support team.\n\n"
-        f"Ticket ID: {ticket_id}\n"
-        f"Settlement: {settlement_id} | UTR: {batch.utr or '—'}\n"
-        f"Issue: {decision.plain_issue}\n\n"
-        f"Calculation breakdown:\n{calc_lines}\n\n"
-        "Expected response: Razorpay support will investigate settlement processing and fee/tax line integrity."
-    )
+    if failed:
+        calc_lines = "\n".join(_format_calc_block(c) for c in failed)
+        text = (
+            "We've confirmed a genuine settlement issue that cannot be resolved from your data alone.\n\n"
+            "A support ticket has been raised and escalated to the Razorpay support team.\n\n"
+            f"Ticket ID: {ticket_id}\n"
+            f"Settlement: {settlement_id} | UTR: {batch.utr or '—'}\n"
+            f"Issue: {decision.plain_issue}\n\n"
+            f"Calculation breakdown:\n{calc_lines}\n\n"
+            "Expected response: Razorpay support will investigate settlement processing and fee/tax line integrity."
+        )
+    else:
+        # No batch/tax control failed — the merchant is reporting something this app has
+        # no data to confirm or rule out (e.g. the bank never credited a settled amount).
+        # Never invent a calc breakdown for evidence we don't have; say plainly what we
+        # checked and hand the rest to a channel that can see the bank side.
+        text = (
+            "Your Razorpay settlement data shows this settlement as processed and verified — "
+            "batch amounts and fee/GST lines both add up. That doesn't confirm or rule out what "
+            "you're reporting, since this app only sees Razorpay's settlement and recon records, "
+            "not your bank statement.\n\n"
+            "A support ticket has been raised and escalated to the Razorpay support team.\n\n"
+            f"Ticket ID: {ticket_id}\n"
+            f"Settlement: {settlement_id} | UTR: {batch.utr or '—'} | "
+            f"Amount: {_format_inr(decision.net_amount_paise)}\n\n"
+            "Expected response: Razorpay support will check the bank transfer status directly."
+        )
     cites = [settlement_id] + [c for ctrl in failed for c in ctrl.evidence_ids[:1]]
     cites = list(dict.fromkeys(cites + citations))
     return AnswerEnvelope(
@@ -949,12 +1164,27 @@ def route_free_text(
     question: str,
     settlement_id: str | None,
     ticket_offer_pending: bool = False,
+    compensation_offer_pending: bool = False,
 ) -> str:
     q = question.lower()
     if REFUSE_RE.search(q):
         return "refuse"
-    if _wants_escalation(q, ticket_offer_pending):
-        return "escalate"
+    if BANK_NON_RECEIPT_RE.search(q):
+        return "bank_non_receipt"
+    if ticket_offer_pending and compensation_offer_pending:
+        # Two choices were offered together — a bare "yes" cannot pick one; only an
+        # explicit word decides, and an ambiguous confirmation is asked to clarify.
+        if COMPENSATE_RE.search(q):
+            return "compensate"
+        if ESCALATION_RE.search(q):
+            return "escalate"
+        if _is_short_affirmative(q):
+            return "clarify_choice"
+    else:
+        if _wants_compensation(q, compensation_offer_pending):
+            return "compensate"
+        if _wants_escalation(q, ticket_offer_pending):
+            return "escalate"
     if _wants_guidance(q):
         return "support_guidance"
     if parse_amount_candidates(question) or parse_question_date(question):
@@ -970,6 +1200,72 @@ def route_free_text(
     if settlement_id and re.search(r"pay_|rfnd_|trf_|setl_", q):
         return "entity_lookup"
     return "where_is_settlement"
+
+
+_INSTANT_RE = re.compile(r"\binstant\w*|\bsame[\s-]?day\b|\bfast\s*cash\b|\bnow\b", re.I)
+
+
+def answer_pending_query(payment: PendingPayment, question: str) -> AnswerEnvelope:
+    """Answer a merchant question about a payment captured but not yet settled.
+
+    Deliberately not routed through route_free_text(): none of that function's
+    escalation, compensation, or triage machinery applies to a payment with no
+    settlement yet — there is no batch, no UTR, and no triage verdict to compute.
+    """
+    q = sanitize_question(question).lower()
+    captured_str = payment.captured_at.strftime("%d %b %Y")
+    expected_str = payment.expected_settlement_at.strftime("%d %b %Y") if payment.expected_settlement_at else None
+
+    if _INSTANT_RE.search(q):
+        if payment.instant_eligible == "yes":
+            text = (
+                f"Your payment {payment.entity_id} (captured {captured_str}) is eligible for instant "
+                "settlement — it's typically credited within minutes of a manual pull, subject to your "
+                "available instant-settlement balance."
+            )
+            return AnswerEnvelope(
+                answer_text=text, citations=[payment.entity_id], tool_trace=["pending_payment"], agent_mode="keyword",
+            )
+        if payment.instant_eligible == "no":
+            if expected_str:
+                text = (
+                    f"Your payment {payment.entity_id} (captured {captured_str}) is not eligible for instant "
+                    f"settlement. It's on the standard settlement cycle and is expected by {expected_str} "
+                    "(calendar days, not bank business days)."
+                )
+            else:
+                text = (
+                    f"Your payment {payment.entity_id} is not eligible for instant settlement, and we don't "
+                    "have enough data to give an expected standard settlement date."
+                )
+            return AnswerEnvelope(
+                answer_text=text, citations=[payment.entity_id], tool_trace=["pending_payment"], agent_mode="keyword",
+            )
+        return AnswerEnvelope(
+            answer_text=(
+                "We can't confirm instant-settlement eligibility for this payment from your Razorpay "
+                "data — check the Instant Settlements section of your dashboard."
+            ),
+            abstained=True,
+            citations=[payment.entity_id],
+            tool_trace=["pending_payment"],
+            agent_mode="keyword",
+        )
+
+    if expected_str:
+        text = (
+            f"Your payment {payment.entity_id} (captured {captured_str}) has not yet been settled. "
+            f"Based on the standard settlement cycle, it's expected by {expected_str} "
+            "(calendar days, not bank business days)."
+        )
+    else:
+        text = (
+            f"Your payment {payment.entity_id} (captured {captured_str}) has not yet been settled, and we "
+            "don't have enough data from your Razorpay settlement and recon records to give an expected date."
+        )
+    return AnswerEnvelope(
+        answer_text=text, citations=[payment.entity_id], tool_trace=["pending_payment"], agent_mode="keyword",
+    )
 
 
 _FINISH_ANSWER_TOOL = {
@@ -1738,9 +2034,11 @@ def _keyword_answer(
     decision: SettlementCloseDecision | None,
     raised_ticket_id: str | None = None,
     ticket_offer_pending: bool = False,
+    raised_claim_id: str | None = None,
+    compensation_offer_pending: bool = False,
 ) -> AnswerEnvelope:
     q = sanitize_question(question)
-    intent = route_free_text(q, settlement_id, ticket_offer_pending)
+    intent = route_free_text(q, settlement_id, ticket_offer_pending, compensation_offer_pending)
 
     if intent == "refuse":
         return AnswerEnvelope(
@@ -1750,6 +2048,65 @@ def _keyword_answer(
             agent_mode="keyword",
         )
 
+    if intent == "clarify_choice":
+        triage = _triage_for(settlement_id, batches, decision)
+        if triage and triage.verdict == TriageVerdict.AUTO_COMPENSABLE and not raised_claim_id:
+            return AnswerEnvelope(
+                answer_text=(
+                    "Just to be clear — say **\"submit the claim\"** to file a compensation claim for "
+                    f"{triage.delta_display}, or **\"raise it to support\"** to escalate instead."
+                ),
+                citations=triage.citations,
+                settlement_id=settlement_id,
+                triage_verdict=triage.verdict.value,
+                offer_compensation=True,
+                offer_raise_ticket=True,
+                compensation_amount_display=triage.delta_display,
+                tool_trace=["triage_clarify_choice"],
+                agent_mode="keyword",
+            )
+        # The offer moved on underneath the confirmation (claim already filed, or the
+        # evidence changed) — fall through and answer from the current triage state.
+        if triage:
+            return _triage_answer(
+                settlement_id, triage, decision, bool(raised_ticket_id), raised_ticket_id,
+                bool(raised_claim_id), raised_claim_id,
+            )
+
+    if intent == "compensate":
+        if not settlement_id or not decision:
+            return AnswerEnvelope(
+                answer_text="Select a settlement first, then I can show the compensation claim option.",
+                abstained=True,
+                agent_mode="keyword",
+            )
+        triage = _triage_for(settlement_id, batches, decision)
+        if triage is None or triage.verdict != TriageVerdict.AUTO_COMPENSABLE:
+            # Re-triage before acting: an adjustment may have landed, or this was never
+            # compensable. Never file a claim outside a fresh AUTO_COMPENSABLE verdict.
+            return _triage_answer(
+                settlement_id, triage, decision, bool(raised_ticket_id), raised_ticket_id,
+                bool(raised_claim_id), raised_claim_id,
+            ) if triage else _no_ticket_needed_answer(settlement_id)
+        if raised_claim_id:
+            return _triage_answer(
+                settlement_id, triage, decision, bool(raised_ticket_id), raised_ticket_id, True, raised_claim_id
+            )
+        return submit_compensation_claim(settlement_id, triage, batches)
+
+    if intent == "bank_non_receipt":
+        if not settlement_id or not decision:
+            return AnswerEnvelope(
+                answer_text=(
+                    "Select a settlement first — this app can only speak to Razorpay's settlement "
+                    "and recon data, never your bank statement, so I need to know which settlement "
+                    "you mean before I can tell you what we do and don't see."
+                ),
+                abstained=True,
+                agent_mode="keyword",
+            )
+        return _bank_non_receipt_answer(settlement_id, decision, bool(raised_ticket_id), raised_ticket_id)
+
     if intent == "escalate":
         if not settlement_id or not decision:
             return AnswerEnvelope(
@@ -1757,16 +2114,21 @@ def _keyword_answer(
                 abstained=True,
                 agent_mode="keyword",
             )
-        if needs_support_ticket(decision):
-            if raised_ticket_id:
-                return _support_guidance_answer(settlement_id, decision, True, raised_ticket_id)
-            return _offer_raise_ticket_answer(settlement_id, decision)
+        triage = _triage_for(settlement_id, batches, decision)
+        verdict = triage.verdict if triage else None
+        if verdict in (TriageVerdict.AUTO_COMPENSABLE, TriageVerdict.NEEDS_SUPPORT):
+            return _support_guidance_answer(
+                settlement_id, decision, bool(raised_ticket_id), raised_ticket_id,
+                triage_verdict=verdict.value,
+            )
         return _no_ticket_needed_answer(settlement_id)
 
     if intent == "support_guidance" and settlement_id and decision:
-        if needs_support_ticket(decision):
-            return _support_guidance_answer(
-                settlement_id, decision, bool(raised_ticket_id), raised_ticket_id
+        triage = _triage_for(settlement_id, batches, decision)
+        if triage and triage.verdict != TriageVerdict.NO_ISSUE:
+            return _triage_answer(
+                settlement_id, triage, decision, bool(raised_ticket_id), raised_ticket_id,
+                bool(raised_claim_id), raised_claim_id,
             )
 
     if intent == "lookup":
@@ -1826,13 +2188,15 @@ def answer_free_text(
     settlement_decision: SettlementCloseDecision | None = None,
     raised_ticket_id: str | None = None,
     ticket_offer_pending: bool = False,
+    raised_claim_id: str | None = None,
+    compensation_offer_pending: bool = False,
 ) -> AnswerEnvelope:
     ok, err = validate_question_input(question)
     if not ok:
         return AnswerEnvelope(answer_text=err, abstained=True, agent_mode="keyword")
 
     q = sanitize_question(question)
-    intent = route_free_text(q, settlement_id, ticket_offer_pending)
+    intent = route_free_text(q, settlement_id, ticket_offer_pending, compensation_offer_pending)
 
     if intent == "refuse":
         return AnswerEnvelope(
@@ -1844,7 +2208,8 @@ def answer_free_text(
 
     if intent in SAFETY_INTENTS:
         return _keyword_answer(
-            q, settlement_id, batches, settlement_decision, raised_ticket_id, ticket_offer_pending
+            q, settlement_id, batches, settlement_decision, raised_ticket_id, ticket_offer_pending,
+            raised_claim_id, compensation_offer_pending,
         )
 
     llm_enabled = should_use_llm() if use_llm is None else use_llm
@@ -1866,7 +2231,8 @@ def answer_free_text(
             return llm_env
 
     return _keyword_answer(
-        q, settlement_id, batches, settlement_decision, raised_ticket_id, ticket_offer_pending
+        q, settlement_id, batches, settlement_decision, raised_ticket_id, ticket_offer_pending,
+        raised_claim_id, compensation_offer_pending,
     )
 
 
