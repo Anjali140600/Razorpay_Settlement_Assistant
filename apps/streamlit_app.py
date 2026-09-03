@@ -1089,10 +1089,32 @@ with st.sidebar:
         st.caption("Type in the chat box for AI answers. Suggested buttons use rules.")
 
     st.markdown('<p class="section-label">Browse</p>', unsafe_allow_html=True)
-    settlements_tab, unsettled_tab = st.tabs(["Settlements", "Unsettled Payments"])
+    browse_category = st.radio(
+        "Browse category",
+        ["Settlements", "Unsettled Payments"],
+        key="browse_category",
+        label_visibility="collapsed",
+    )
 
-    with settlements_tab:
-        filter_tab = st.radio("Filter", ["All", "Needs attention", "Verified"], horizontal=True)
+verified = metrics.get("verified_settlements", 0)
+total = metrics.get("processed_settlements", 0)
+needs = metrics.get("needs_attention_settlements", 0)
+
+with st.container(border=True):
+    st.markdown('<p class="section-label">Summary</p>', unsafe_allow_html=True)
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Verified", verified)
+    c2.metric("Needs attention", needs)
+    c3.metric("Total", total)
+
+selected_id = None
+selected_pending_id = None
+pending_payments: list = []
+
+if browse_category == "Settlements":
+    with st.container(border=True):
+        st.markdown('<p class="section-label">Browse settlements</p>', unsafe_allow_html=True)
+        filter_tab = st.radio("Filter", ["All", "Needs attention", "Verified"], horizontal=True, key="settlement_filter")
 
         decisions = list(run.settlement_decisions)
         if filter_tab == "Verified":
@@ -1106,7 +1128,6 @@ with st.sidebar:
 
         if not decisions:
             st.info("No settlements in this view.")
-            selected_id = None
         else:
             options = {}
             for d in decisions:
@@ -1124,13 +1145,13 @@ with st.sidebar:
                         default_idx = i
                         break
 
-            picked = st.selectbox("Settlements", labels, index=default_idx, label_visibility="collapsed")
+            picked = st.selectbox("Settlements", labels, index=default_idx, label_visibility="collapsed", key="settlement_picker")
             selected_id = options[picked]
             st.session_state["selected_settlement"] = selected_id
-
+else:
     pending_payments = load_pending_payments(DEMO_DIR / "recon.json", DEMO_DIR / "manifest.json")
-    selected_pending_id = None
-    with unsettled_tab:
+    with st.container(border=True):
+        st.markdown('<p class="section-label">Pending payments (not yet settled)</p>', unsafe_allow_html=True)
         if not pending_payments:
             st.info("No unsettled payments.")
         else:
@@ -1139,22 +1160,11 @@ with st.sidebar:
                 for p in pending_payments
             }
             pending_labels = ["— none selected —"] + list(pending_options.keys())
-            picked_pending = st.selectbox("Pending payments", pending_labels, label_visibility="collapsed")
+            picked_pending = st.selectbox(
+                "Pending payments", pending_labels, label_visibility="collapsed", key="pending_payment_picker"
+            )
             if picked_pending != "— none selected —":
                 selected_pending_id = pending_options[picked_pending]
-                selected_id = None
-                st.session_state["selected_settlement"] = None
-
-verified = metrics.get("verified_settlements", 0)
-total = metrics.get("processed_settlements", 0)
-needs = metrics.get("needs_attention_settlements", 0)
-
-with st.container(border=True):
-    st.markdown('<p class="section-label">Summary</p>', unsafe_allow_html=True)
-    c1, c2, c3 = st.columns(3)
-    c1.metric("Verified", verified)
-    c2.metric("Needs attention", needs)
-    c3.metric("Total", total)
 
 if selected_pending_id:
     payment = next(p for p in pending_payments if p.entity_id == selected_pending_id)
