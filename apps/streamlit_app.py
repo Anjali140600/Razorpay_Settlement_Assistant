@@ -1088,6 +1088,63 @@ with st.sidebar:
         )
         st.caption("Type in the chat box for AI answers. Suggested buttons use rules.")
 
+    st.markdown('<p class="section-label">Browse</p>', unsafe_allow_html=True)
+    settlements_tab, unsettled_tab = st.tabs(["Settlements", "Unsettled Payments"])
+
+    with settlements_tab:
+        filter_tab = st.radio("Filter", ["All", "Needs attention", "Verified"], horizontal=True)
+
+        decisions = list(run.settlement_decisions)
+        if filter_tab == "Verified":
+            decisions = [d for d in decisions if d.integrity_status == SettlementIntegrityStatus.VERIFIED]
+        elif filter_tab == "Needs attention":
+            decisions = [d for d in decisions if d.integrity_status != SettlementIntegrityStatus.VERIFIED]
+
+        decisions.sort(
+            key=lambda d: (d.integrity_status == SettlementIntegrityStatus.VERIFIED, -d.net_amount_paise)
+        )
+
+        if not decisions:
+            st.info("No settlements in this view.")
+            selected_id = None
+        else:
+            options = {}
+            for d in decisions:
+                batch = next(b for b in engine.batches if b.settlement_id == d.settlement_id)
+                status = "Verified" if d.integrity_status == SettlementIntegrityStatus.VERIFIED else "Needs attention"
+                utr_short = d.utr[-6:] if d.utr else "—"
+                label = f"{format_inr(d.net_amount_paise)} · {format_date(batch.processed_at)} · UTR …{utr_short} · {status}"
+                options[label] = d.settlement_id
+
+            labels = list(options.keys())
+            default_idx = 0
+            if st.session_state["selected_settlement"] in options.values():
+                for i, lbl in enumerate(labels):
+                    if options[lbl] == st.session_state["selected_settlement"]:
+                        default_idx = i
+                        break
+
+            picked = st.selectbox("Settlements", labels, index=default_idx, label_visibility="collapsed")
+            selected_id = options[picked]
+            st.session_state["selected_settlement"] = selected_id
+
+    pending_payments = load_pending_payments(DEMO_DIR / "recon.json", DEMO_DIR / "manifest.json")
+    selected_pending_id = None
+    with unsettled_tab:
+        if not pending_payments:
+            st.info("No unsettled payments.")
+        else:
+            pending_options = {
+                f"{format_inr(p.amount)} · {p.order_id or p.entity_id} · captured {format_date(p.captured_at)}": p.entity_id
+                for p in pending_payments
+            }
+            pending_labels = ["— none selected —"] + list(pending_options.keys())
+            picked_pending = st.selectbox("Pending payments", pending_labels, label_visibility="collapsed")
+            if picked_pending != "— none selected —":
+                selected_pending_id = pending_options[picked_pending]
+                selected_id = None
+                st.session_state["selected_settlement"] = None
+
 verified = metrics.get("verified_settlements", 0)
 total = metrics.get("processed_settlements", 0)
 needs = metrics.get("needs_attention_settlements", 0)
@@ -1098,60 +1155,6 @@ with st.container(border=True):
     c1.metric("Verified", verified)
     c2.metric("Needs attention", needs)
     c3.metric("Total", total)
-
-with st.container(border=True):
-    st.markdown('<p class="section-label">Browse settlements</p>', unsafe_allow_html=True)
-    filter_tab = st.radio("Filter", ["All", "Needs attention", "Verified"], horizontal=True)
-
-    decisions = list(run.settlement_decisions)
-    if filter_tab == "Verified":
-        decisions = [d for d in decisions if d.integrity_status == SettlementIntegrityStatus.VERIFIED]
-    elif filter_tab == "Needs attention":
-        decisions = [d for d in decisions if d.integrity_status != SettlementIntegrityStatus.VERIFIED]
-
-    decisions.sort(
-        key=lambda d: (d.integrity_status == SettlementIntegrityStatus.VERIFIED, -d.net_amount_paise)
-    )
-
-    if not decisions:
-        st.info("No settlements in this view.")
-        selected_id = None
-    else:
-        options = {}
-        for d in decisions:
-            batch = next(b for b in engine.batches if b.settlement_id == d.settlement_id)
-            status = "Verified" if d.integrity_status == SettlementIntegrityStatus.VERIFIED else "Needs attention"
-            utr_short = d.utr[-6:] if d.utr else "—"
-            label = f"{format_inr(d.net_amount_paise)} · {format_date(batch.processed_at)} · UTR …{utr_short} · {status}"
-            options[label] = d.settlement_id
-
-        labels = list(options.keys())
-        default_idx = 0
-        if st.session_state["selected_settlement"] in options.values():
-            for i, lbl in enumerate(labels):
-                if options[lbl] == st.session_state["selected_settlement"]:
-                    default_idx = i
-                    break
-
-        picked = st.selectbox("Settlements", labels, index=default_idx, label_visibility="collapsed")
-        selected_id = options[picked]
-        st.session_state["selected_settlement"] = selected_id
-
-pending_payments = load_pending_payments(DEMO_DIR / "recon.json", DEMO_DIR / "manifest.json")
-selected_pending_id = None
-if pending_payments:
-    with st.container(border=True):
-        st.markdown('<p class="section-label">Pending payments (not yet settled)</p>', unsafe_allow_html=True)
-        pending_options = {
-            f"{format_inr(p.amount)} · {p.order_id or p.entity_id} · captured {format_date(p.captured_at)}": p.entity_id
-            for p in pending_payments
-        }
-        pending_labels = ["— none selected —"] + list(pending_options.keys())
-        picked_pending = st.selectbox("Pending payments", pending_labels, label_visibility="collapsed")
-        if picked_pending != "— none selected —":
-            selected_pending_id = pending_options[picked_pending]
-            selected_id = None
-            st.session_state["selected_settlement"] = None
 
 if selected_pending_id:
     payment = next(p for p in pending_payments if p.entity_id == selected_pending_id)
