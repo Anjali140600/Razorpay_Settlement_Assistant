@@ -654,20 +654,24 @@ with st.sidebar:
         label_visibility="collapsed",
     )
 
-verified = metrics.get("verified_settlements", 0)
-total = metrics.get("processed_settlements", 0)
-needs = metrics.get("needs_attention_settlements", 0)
+pending_payments = load_pending_payments(DEMO_DIR / "recon.json", DEMO_DIR / "manifest.json")
 
 with st.container(border=True):
     st.markdown('<p class="section-label">Summary</p>', unsafe_allow_html=True)
     c1, c2, c3 = st.columns(3)
-    c1.metric("Verified", verified)
-    c2.metric("Needs attention", needs)
-    c3.metric("Total", total)
+    if browse_category == "Settlements":
+        c1.metric("Verified", metrics.get("verified_settlements", 0))
+        c2.metric("Needs attention", metrics.get("needs_attention_settlements", 0))
+        c3.metric("Total", metrics.get("processed_settlements", 0))
+    else:
+        instant_eligible = sum(payment.instant_eligible == "yes" for payment in pending_payments)
+        unsettled_amount = sum(payment.amount for payment in pending_payments)
+        c1.metric("Unsettled payments", len(pending_payments))
+        c2.metric("Instant eligible", instant_eligible)
+        c3.metric("Total amount", format_inr(unsettled_amount))
 
 selected_id = None
 selected_pending_id = None
-pending_payments = load_pending_payments(DEMO_DIR / "recon.json", DEMO_DIR / "manifest.json")
 
 if browse_category == "Settlements":
     with st.container(border=True):

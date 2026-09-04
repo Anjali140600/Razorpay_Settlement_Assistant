@@ -2,7 +2,10 @@ from pathlib import Path
 
 from streamlit.testing.v1 import AppTest
 
+from src.connectors.loaders import load_pending_payments
+
 APP = Path(__file__).resolve().parents[1] / "apps" / "streamlit_app.py"
+DEMO_DIR = APP.parents[1] / "data" / "synthetic" / "demo"
 
 
 def test_universal_launcher_replaces_embedded_chat_surfaces():
@@ -21,6 +24,25 @@ def test_universal_launcher_replaces_embedded_chat_surfaces():
     assert "Track an unsettled payment" in labels
     assert "Understand a settlement" in labels
     assert "Talk to support" in labels
+
+
+def test_summary_changes_with_browse_category():
+    app = AppTest.from_file(APP, default_timeout=20).run()
+
+    assert [metric.label for metric in app.metric[:3]] == ["Verified", "Needs attention", "Total"]
+
+    browse_category = next(radio for radio in app.radio if radio.label == "Browse category")
+    browse_category.set_value("Unsettled Payments").run()
+
+    assert not app.exception
+    pending_payments = load_pending_payments(DEMO_DIR / "recon.json", DEMO_DIR / "manifest.json")
+    instant_eligible = sum(payment.instant_eligible == "yes" for payment in pending_payments)
+    unsettled_amount = sum(payment.amount for payment in pending_payments)
+    assert [(metric.label, metric.value) for metric in app.metric[:3]] == [
+        ("Unsettled payments", str(len(pending_payments))),
+        ("Instant eligible", str(instant_eligible)),
+        ("Total amount", f"₹{unsettled_amount / 100:,.2f}"),
+    ]
 
 
 def test_free_text_ticket_request_renders_contextual_button():
