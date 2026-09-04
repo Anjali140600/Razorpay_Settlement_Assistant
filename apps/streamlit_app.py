@@ -20,11 +20,44 @@ from src.agent.llm_client import should_use_llm, get_llm_model, llm_providers_av
 from src.agent.triage import TriageResult, TriageVerdict
 from src.agent.triage import classify as classify_triage
 from src.connectors.loaders import load_pending_payments
-from src.domain.models import SettlementIntegrityStatus
+from src.domain.models import PendingPayment, SettlementIntegrityStatus
 from src.engine import ReconciliationEngine
+from src.reporting import build_unsettled_payments_report
 
 DEMO_DIR = ROOT / "data" / "synthetic" / "demo"
 SAMPLE_OUTPUT = ROOT / "sample-output"
+
+SETTLEMENT_REPORT_METRIC_HELP = {
+    "Settlement integrity rate": (
+        "**Formula:** Verified settlements ÷ Processed settlements × 100.  \n"
+        "A settlement is verified only when both its batch amount and fee/GST checks pass."
+    ),
+    "Tax-line pass rate": (
+        "**Formula:** Settlements passing the fee/GST check ÷ Processed settlements × 100."
+    ),
+    "Demo labeled accuracy (independent verifier)": (
+        "**Formula:** Correct demo results ÷ Labeled demo settlements × 100.  \n"
+        "A result is correct when its calculated status matches the expected label."
+    ),
+    "Holdout integrity rate": (
+        "**Formula:** Verified holdout settlements ÷ Processed holdout settlements × 100."
+    ),
+    "Holdout labeled accuracy": (
+        "**Formula:** Correct holdout results ÷ Labeled holdout settlements × 100."
+    ),
+    "Exceptions closed": (
+        "**Formula:** Count of lifecycle exceptions matched to one valid later adjustment."
+    ),
+    "Still open": (
+        "**Formula:** Count of lifecycle exceptions without a valid matching adjustment."
+    ),
+    "Closure rate": (
+        "**Formula:** Closed lifecycle exceptions ÷ Total lifecycle exceptions × 100."
+    ),
+    "Throughput": (
+        "**Formula:** Total reconciliation lines ÷ Processing time in seconds."
+    ),
+}
 
 CSS = """
 <style>
@@ -514,7 +547,15 @@ def format_date(dt) -> str:
     return dt.strftime("%b %-d") if hasattr(dt, "strftime") else str(dt)[:10]
 
 
-def render_pending_payment_panel(payment) -> None:
+def instant_settlement_label(payment: PendingPayment) -> str:
+    if payment.instant_eligible == "yes":
+        return "Instant eligible"
+    if payment.instant_eligible == "no":
+        return "Standard settlement only"
+    return "Eligibility unknown"
+
+
+def render_pending_payment_panel(payment: PendingPayment) -> None:
     """Render the detail summary for a payment with no settlement yet."""
     st.markdown('<p class="section-label">Pending payment detail</p>', unsafe_allow_html=True)
     st.subheader(f"{format_inr(payment.amount)} · captured {format_date(payment.captured_at)}")
@@ -522,6 +563,12 @@ def render_pending_payment_panel(payment) -> None:
         '<p class="status-pill attention">⏳ Not yet settled</p>',
         unsafe_allow_html=True,
     )
+    if payment.instant_eligible == "yes":
+        st.success("Eligible for Instant Settlement")
+    elif payment.instant_eligible == "no":
+        st.info("Standard settlement only — not eligible for Instant Settlement")
+    else:
+        st.warning("Instant Settlement eligibility unavailable")
     if payment.expected_settlement_at:
         st.caption(f"Expected settlement: {payment.expected_settlement_at.strftime('%d %b %Y')} (calendar days)")
 
@@ -723,7 +770,10 @@ else:
             st.info("No unsettled payments.")
         else:
             pending_options = {
-                f"{format_inr(p.amount)} · {p.order_id or p.entity_id} · captured {format_date(p.captured_at)}": p.entity_id
+                (
+                    f"{format_inr(p.amount)} · {p.order_id or p.entity_id} · "
+                    f"captured {format_date(p.captured_at)} · {instant_settlement_label(p)}"
+                ): p.entity_id
                 for p in pending_payments
             }
             pending_labels = ["— none selected —"] + list(pending_options.keys())
@@ -837,85 +887,166 @@ if selected_id:
             hide_index=True,
         )
 
-st.markdown("---")
-with st.expander("Download report", expanded=False):
-    exceptions = engine.export_exceptions(run)
-    export = {
-        "run_id": run.run_id,
-        "cutoff": str(run.cutoff_date),
-        "metrics": metrics,
-        "exceptions": exceptions,
-    }
-    st.download_button(
-        "Download report (JSON)",
-        json.dumps(export, indent=2, default=str),
-        file_name=f"razorpay_settlement_assistant_{run.cutoff_date}.json",
-        mime="application/json",
-    )
-    st.metric("Settlement integrity rate", f"{metrics.get('settlement_integrity_rate', 0):.1%}")
-    st.metric("Tax-line pass rate", f"{metrics.get('tax_line_pass_rate', 0):.1%}")
-    acc = metrics.get("labeled_control_accuracy")
-    if acc is not None:
-        st.metric("Demo labeled accuracy (independent verifier)", f"{acc:.1%}")
-    st.caption(f"Label source: {metrics.get('label_source', '—')}")
+if browse_category == "Settlements" or pending_payments:
+    st.markdown("---")
 
-    st.markdown("**Independent holdout** (hand-crafted, not from generator)")
-    st.metric("Holdout integrity rate", f"{metrics.get('holdout_integrity_rate', 0):.1%}")
-    hacc = metrics.get("holdout_labeled_accuracy")
-    if hacc is not None:
-        st.metric("Holdout labeled accuracy", f"{hacc:.1%}")
-    st.caption(metrics.get("holdout_description", metrics.get("holdout_source", "")))
-    holdout_exc = metrics.get("holdout_exceptions", [])
-    if holdout_exc:
-        st.markdown("Holdout exceptions")
-        st.dataframe(holdout_exc, width="stretch", hide_index=True)
+if browse_category == "Settlements":
+    with st.expander("Download settlement report", expanded=False):
+        exceptions = engine.export_exceptions(run)
+        export = {
+            "run_id": run.run_id,
+            "cutoff": str(run.cutoff_date),
+            "metrics": metrics,
+            "exceptions": exceptions,
+        }
+        st.download_button(
+            "Download settlement report (JSON)",
+            json.dumps(export, indent=2, default=str),
+            file_name=f"razorpay_settlement_assistant_{run.cutoff_date}.json",
+            mime="application/json",
+            key="download_settlement_report",
+        )
+        st.metric(
+            "Settlement integrity rate",
+            f"{metrics.get('settlement_integrity_rate', 0):.1%}",
+            help=SETTLEMENT_REPORT_METRIC_HELP["Settlement integrity rate"],
+        )
+        st.metric(
+            "Tax-line pass rate",
+            f"{metrics.get('tax_line_pass_rate', 0):.1%}",
+            help=SETTLEMENT_REPORT_METRIC_HELP["Tax-line pass rate"],
+        )
+        acc = metrics.get("labeled_control_accuracy")
+        if acc is not None:
+            st.metric(
+                "Demo labeled accuracy (independent verifier)",
+                f"{acc:.1%}",
+                help=SETTLEMENT_REPORT_METRIC_HELP[
+                    "Demo labeled accuracy (independent verifier)"
+                ],
+            )
+        st.caption(f"Label source: {metrics.get('label_source', '—')}")
 
-    st.markdown("#### Exception lifecycle")
-    st.caption(
-        "Historical integrity never changes — a control that failed, failed. Closure "
-        "tracks only whether Razorpay later compensated the gap with an adjustment."
-    )
-    lc1, lc2, lc3 = st.columns(3)
-    lc1.metric("Exceptions closed", metrics.get("lifecycle_exceptions_closed", 0))
-    lc2.metric("Still open", metrics.get("lifecycle_exceptions_open", 0))
-    closure = metrics.get("lifecycle_closure_rate")
-    lc3.metric("Closure rate", f"{closure:.1%}" if closure is not None else "n/a")
+        st.markdown("**Independent holdout** (hand-crafted, not from generator)")
+        st.metric(
+            "Holdout integrity rate",
+            f"{metrics.get('holdout_integrity_rate', 0):.1%}",
+            help=SETTLEMENT_REPORT_METRIC_HELP["Holdout integrity rate"],
+        )
+        hacc = metrics.get("holdout_labeled_accuracy")
+        if hacc is not None:
+            st.metric(
+                "Holdout labeled accuracy",
+                f"{hacc:.1%}",
+                help=SETTLEMENT_REPORT_METRIC_HELP["Holdout labeled accuracy"],
+            )
+        st.caption(metrics.get("holdout_description", metrics.get("holdout_source", "")))
+        holdout_exc = metrics.get("holdout_exceptions", [])
+        if holdout_exc:
+            st.markdown("Holdout exceptions")
+            st.dataframe(holdout_exc, width="stretch", hide_index=True)
 
-    lifecycle_rows = metrics.get("lifecycle_rows", [])
-    if lifecycle_rows:
+        st.markdown("#### Exception lifecycle")
+        st.caption(
+            "Historical integrity never changes — a control that failed, failed. Closure "
+            "tracks only whether Razorpay later compensated the gap with an adjustment."
+        )
+        lc1, lc2, lc3 = st.columns(3)
+        lc1.metric(
+            "Exceptions closed",
+            metrics.get("lifecycle_exceptions_closed", 0),
+            help=SETTLEMENT_REPORT_METRIC_HELP["Exceptions closed"],
+        )
+        lc2.metric(
+            "Still open",
+            metrics.get("lifecycle_exceptions_open", 0),
+            help=SETTLEMENT_REPORT_METRIC_HELP["Still open"],
+        )
+        closure = metrics.get("lifecycle_closure_rate")
+        lc3.metric(
+            "Closure rate",
+            f"{closure:.1%}" if closure is not None else "n/a",
+            help=SETTLEMENT_REPORT_METRIC_HELP["Closure rate"],
+        )
+
+        lifecycle_rows = metrics.get("lifecycle_rows", [])
+        if lifecycle_rows:
+            st.dataframe(
+                [
+                    {
+                        "Settlement": r["settlement_id"],
+                        "Gap": r["delta_display"],
+                        "State": getattr(r["state"], "value", r["state"]),
+                        "Matched adjustment": r["matched_adjustment"] or "—",
+                        "Days to close": (
+                            str(r["days_to_close"])
+                            if r["days_to_close"] is not None
+                            else "—"
+                        ),
+                        "Evidence": r["dispute_packet"]["evidence_hash"],
+                    }
+                    for r in lifecycle_rows
+                ],
+                width="stretch",
+                hide_index=True,
+            )
+        unmatched = metrics.get("lifecycle_unmatched_adjustments", [])
+        if unmatched:
+            st.caption(
+                "Adjustments received but not bound to any exception: "
+                f"{', '.join(unmatched)}. Nothing is bound unless the amount, direction, "
+                "timing, and settlement reference all match exactly and uniquely."
+            )
+
+        st.metric(
+            "Throughput",
+            f"{metrics.get('throughput_lines_per_sec', 0)} lines/s",
+            help=SETTLEMENT_REPORT_METRIC_HELP["Throughput"],
+        )
+        if exceptions:
+            st.dataframe(exceptions, width="stretch", hide_index=True)
+
+        if st.button("Export run JSON to sample-output/", key="export_run_json"):
+            SAMPLE_OUTPUT.mkdir(exist_ok=True)
+            (SAMPLE_OUTPUT / "latest_run.json").write_text(
+                json.dumps(export, indent=2, default=str)
+            )
+            st.success("Wrote sample-output/latest_run.json")
+elif pending_payments:
+    with st.expander("Download unsettled payments report", expanded=False):
+        unsettled_export = build_unsettled_payments_report(pending_payments, date.today())
+        unsettled_summary = unsettled_export["summary"]
+        report_columns = st.columns(4)
+        report_columns[0].metric("Unsettled payments", unsettled_summary["payment_count"])
+        report_columns[1].metric(
+            "Total amount", format_inr(unsettled_summary["total_amount_paise"])
+        )
+        report_columns[2].metric("Instant eligible", unsettled_summary["instant_eligible"])
+        report_columns[3].metric("Eligibility unknown", unsettled_summary["eligibility_unknown"])
+
         st.dataframe(
             [
                 {
-                    "Settlement": r["settlement_id"],
-                    "Gap": r["delta_display"],
-                    "State": getattr(r["state"], "value", r["state"]),
-                    "Matched adjustment": r["matched_adjustment"] or "—",
-                    "Days to close": r["days_to_close"] or "—",
-                    "Evidence": r["dispute_packet"]["evidence_hash"],
+                    "Payment": payment.entity_id,
+                    "Order": payment.order_id or "—",
+                    "Amount": format_inr(payment.amount),
+                    "Method": payment.method or "—",
+                    "Captured": format_date(payment.captured_at),
+                    "Expected settlement": format_date(payment.expected_settlement_at),
+                    "Instant Settlement": instant_settlement_label(payment),
                 }
-                for r in lifecycle_rows
+                for payment in pending_payments
             ],
             width="stretch",
             hide_index=True,
         )
-    unmatched = metrics.get("lifecycle_unmatched_adjustments", [])
-    if unmatched:
-        st.caption(
-            "Adjustments received but not bound to any exception: "
-            f"{', '.join(unmatched)}. Nothing is bound unless the amount, direction, "
-            "timing, and settlement reference all match exactly and uniquely."
+        st.download_button(
+            "Download unsettled payments report (JSON)",
+            json.dumps(unsettled_export, indent=2),
+            file_name=f"razorpay_unsettled_payments_{unsettled_export['cutoff']}.json",
+            mime="application/json",
+            key="download_unsettled_report",
         )
-
-    st.metric("Throughput", f"{metrics.get('throughput_lines_per_sec', 0)} lines/s")
-    if exceptions:
-        st.dataframe(exceptions, width="stretch", hide_index=True)
-
-    if st.button("Export run JSON to sample-output/", key="export_run_json"):
-        SAMPLE_OUTPUT.mkdir(exist_ok=True)
-        (SAMPLE_OUTPUT / "latest_run.json").write_text(
-            json.dumps(export, indent=2, default=str)
-        )
-        st.success("Wrote sample-output/latest_run.json")
 
 render_universal_assistant_launcher(
     batches=engine.batch_map(),

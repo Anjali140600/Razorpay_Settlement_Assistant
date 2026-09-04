@@ -45,6 +45,111 @@ def test_summary_changes_with_browse_category():
     ]
 
 
+def test_unsettled_payment_picker_and_detail_show_instant_eligibility():
+    app = AppTest.from_file(APP, default_timeout=20).run()
+    next(radio for radio in app.radio if radio.label == "Browse category").set_value(
+        "Unsettled Payments"
+    ).run()
+
+    picker = next(selectbox for selectbox in app.selectbox if selectbox.label == "Pending payments")
+    assert any("Instant eligible" in option for option in picker.options)
+    assert any("Standard settlement only" in option for option in picker.options)
+    assert any("Eligibility unknown" in option for option in picker.options)
+
+    eligible_option = next(option for option in picker.options if "Instant eligible" in option)
+    picker.set_value(eligible_option).run()
+
+    assert not app.exception
+    assert any("Eligible for Instant Settlement" in str(message.value) for message in app.success)
+
+
+def test_unsettled_payment_detail_shows_standard_settlement_state():
+    app = AppTest.from_file(APP, default_timeout=20).run()
+    next(radio for radio in app.radio if radio.label == "Browse category").set_value(
+        "Unsettled Payments"
+    ).run()
+
+    picker = next(selectbox for selectbox in app.selectbox if selectbox.label == "Pending payments")
+    picker.set_value(
+        next(option for option in picker.options if "Standard settlement only" in option)
+    ).run()
+
+    assert not app.exception
+    assert any("Standard settlement only" in str(message.value) for message in app.info)
+
+
+def test_unsettled_payment_detail_shows_unknown_eligibility_state():
+    app = AppTest.from_file(APP, default_timeout=20).run()
+    next(radio for radio in app.radio if radio.label == "Browse category").set_value(
+        "Unsettled Payments"
+    ).run()
+
+    picker = next(selectbox for selectbox in app.selectbox if selectbox.label == "Pending payments")
+    picker.set_value(
+        next(option for option in picker.options if "Eligibility unknown" in option)
+    ).run()
+
+    assert not app.exception
+    assert any(
+        "Instant Settlement eligibility unavailable" in str(message.value)
+        for message in app.warning
+    )
+
+
+def test_download_report_changes_with_browse_category():
+    app = AppTest.from_file(APP, default_timeout=20).run()
+
+    assert any(expander.label == "Download settlement report" for expander in app.expander)
+    assert app.download_button[0].label == "Download settlement report (JSON)"
+
+    next(radio for radio in app.radio if radio.label == "Browse category").set_value(
+        "Unsettled Payments"
+    ).run()
+
+    assert not app.exception
+    assert any(expander.label == "Download unsettled payments report" for expander in app.expander)
+    assert app.download_button[0].label == "Download unsettled payments report (JSON)"
+    visible_metrics = {(metric.label, metric.value) for metric in app.metric}
+    assert ("Eligibility unknown", "1") in visible_metrics
+    assert not any(metric.label == "Settlement integrity rate" for metric in app.metric)
+
+
+def test_settlement_report_metrics_explain_their_formulas_on_hover():
+    app = AppTest.from_file(APP, default_timeout=20).run()
+
+    assert not app.exception
+    expected_formulas = {
+        "Settlement integrity rate": "Verified settlements ÷ Processed settlements × 100",
+        "Tax-line pass rate": (
+            "Settlements passing the fee/GST check ÷ Processed settlements × 100"
+        ),
+        "Demo labeled accuracy (independent verifier)": (
+            "Correct demo results ÷ Labeled demo settlements × 100"
+        ),
+        "Holdout integrity rate": (
+            "Verified holdout settlements ÷ Processed holdout settlements × 100"
+        ),
+        "Holdout labeled accuracy": (
+            "Correct holdout results ÷ Labeled holdout settlements × 100"
+        ),
+        "Exceptions closed": (
+            "Count of lifecycle exceptions matched to one valid later adjustment"
+        ),
+        "Still open": (
+            "Count of lifecycle exceptions without a valid matching adjustment"
+        ),
+        "Closure rate": (
+            "Closed lifecycle exceptions ÷ Total lifecycle exceptions × 100"
+        ),
+        "Throughput": "Total reconciliation lines ÷ Processing time in seconds",
+    }
+    report_metrics = {metric.label: metric for metric in app.metric}
+
+    for label, formula in expected_formulas.items():
+        assert label in report_metrics
+        assert formula in report_metrics[label].help
+
+
 def test_free_text_ticket_request_renders_contextual_button():
     app = AppTest.from_file(APP, default_timeout=20).run()
     next(button for button in app.button if button.label == ":material/support_agent:").click().run()

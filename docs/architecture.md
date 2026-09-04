@@ -67,7 +67,8 @@ a separate number: an adjustment compensates cash, it does not make a failed con
 | Lifecycle | `src/lifecycle/` | Stable exception identity, deterministic adjustment matcher, lifecycle projection |
 | Eval | `src/eval/` | Independent holdout, Q&A trust scorecard, lifecycle labels |
 | Engine | `src/engine.py` | Orchestration, metrics, exception export |
-| UI | `apps/streamlit_app.py` | Simple UI — summary, list, detail, preset + free-text Q&A |
+| Reporting | `src/reporting.py` | Cutoff-safe JSON payloads for captured payments awaiting settlement |
+| UI | `apps/streamlit_app.py` | Summary, detail, Q&A, metric formula help, and report downloads |
 
 ## UI principles (final product)
 
