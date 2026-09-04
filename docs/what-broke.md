@@ -20,6 +20,47 @@ This still does not make every AI sentence 100% correct. A real amount could app
 
 Other failures included a retired Groq model, provider-specific tool-call errors, reasoning models stopping without a final answer, free-tier rate limits, and a test-oriented first UI. We added current-model failover, provider compatibility handling, visible rules fallback, bounded read-only tools, abstention on missing evidence, and a merchant-first interface.
 
+Two things then changed the submission, and both were built **because** the failure above
+made us distrust our own claims.
+
+**First, we stopped asserting that the AI is safe and started measuring it.** A scorecard
+of 41 hand-labeled questions scores the agent on both answer paths. Measured: money
+accuracy rises from **63.6% to 100%** when the AI path is enabled, **zero unverified
+amounts** reach the merchant, and the deterministic validator caught **12 attempts by the
+model to state a wrong rupee figure**. That last number is the honest one. The AI is not
+correct because we prompted it well; it is safe because the guard in front of it works and
+we can count the times it fired.
+
+Building it exposed four real defects we had been shipping blind. The money guard matched
+the `₹` symbol only, so `Rs 999.00` and `INR 999` walked straight past the invented-amount
+check — every earlier safety claim rested on that hole. Digits inside an entity id were
+read as money, so asking about `pay_setl_tax_mismatch_1` parsed as ₹0.01 and mis-routed
+the question. An "AI enabled" run scored identically to the rules baseline because 34 of
+41 answers had silently fallen back to rules, so we made per-case attribution mandatory.
+And a scorecard generated while our provider quota was exhausted produced a complete,
+plausible, entirely fake AI column — the report now refuses to publish a provider-degraded
+run as a model result. Three of our own eval labels were wrong too, penalising the agent
+for correct answers.
+
+**Second, exceptions now have a lifecycle instead of being a dead end.** Previously we
+flagged six settlements and stopped, so "exceptions we could not resolve" had no
+denominator. A flagged settlement now produces a dispute packet with the computed delta
+and an evidence hash; when Razorpay posts a corrective `adjustment` line in a later cycle,
+a fully deterministic matcher binds it back to the original exception and closes it. One
+of five fixture exceptions closes — **20%** — and the other four stay open on purpose:
+wrong amount, duplicate adjustments, missing reference, and no adjustment at all. Nothing
+binds unless the amount matches exactly in paise, the direction and currency agree, the
+timing is later, the settlement or UTR is named exactly, and the pairing is unique. The
+LLM has no role in that decision, because a hallucinated binding would silently mark a
+real financial exception resolved.
+
+The most important correction here was to our own plan. We had intended to demo the
+integrity rate improving from 81.8% to 84.8% once a correction landed. That claim is
+false: a later adjustment compensates cash, it does not make an earlier failed control
+pass. Historical integrity and operational closure are now separate metrics that never
+mix, `settlement_integrity_rate` stays 73.81% no matter how many exceptions close, and a
+test enforces it.
+
 The remaining gaps require real merchant data, production APIs, stronger semantic validation, authentication, and human approval workflows. I did not pretend to finish those in a hackathon prototype. I prioritised the complete Track 04 loop: process a 50+ record batch, measure accuracy and throughput, export every exception, explain failures, and never let AI change a verified financial result.
 
 ---
@@ -91,6 +132,42 @@ At the time this report was updated, the automated suite had **56 passing tests*
 - reasoning-model stall recovery;
 - invented money rejection;
 - real money used in the wrong role.
+
+(The suite stands at **230 passing tests** as of 3 September 2026.)
+
+### 6. The agent is measured, not asserted
+
+`python -m src.eval.qa_cli --runs 3` scores 41 hand-labeled questions across four classes:
+answerable-with-citation, must-abstain, must-refuse, and exact-money. Both the
+deterministic path and the AI path are scored side by side, and every case records **who
+actually answered it**, because the agent falls back to rules whenever the model fails and
+an unattributed score can be pure fallback.
+
+Published figures are the **worst** clean run, never the mean and never the best. A run
+the provider partly refused is excluded from selection entirely and the header says how
+many runs were clean out of those attempted.
+
+What the scorecard deliberately does **not** claim: prompt-injection refusal is a system
+guardrail, not model judgment, because the router refuses before the model is ever called;
+citation validity means the cited id resolves, not that it supports the sentence; and the
+money guard covers currency-marked amounts only, since treating bare numerals as money
+would read "18% GST" as a figure.
+
+### 7. Exceptions have a lifecycle, and most of them stay open
+
+A flagged settlement emits a dispute packet (failing control, signed delta in paise,
+citations, evidence hash). If Razorpay posts a matching `adjustment` line in a later
+cycle, a deterministic matcher binds it and the exception closes as compensated. Six
+predicates must all hold and the pairing must be one-to-one; there is no tolerance, no
+fuzzy matching, and no LLM involvement.
+
+The lifecycle is recomputed from two immutable feeds on every run rather than stored in a
+journal, so there is no hidden state to drift or corrupt. Closure is measured on
+hand-written fixtures rather than generator output, because a generator that writes both
+the defect and its remedy would prove code execution rather than matching quality.
+
+The result is a 20% closure rate, and that is the honest number. Four of five exceptions
+stay open by design.
 
 ---
 
@@ -361,9 +438,7 @@ This was left bounded because the demo proves safe Q&A under a strict token budg
 
 ### Some repository code is legacy, not part of the product path
 
-The older `src/agent/investigator.py` ReAct workflow and bank/GL control functions remain in the repository, but the current merchant UI and settlement engine use `settlement_qa.py` and the settlement evidence tools.
-
-They were retained during the hackathon to avoid risky cleanup immediately before submission. The architecture and product claims should describe the wired path, not every file that exists. A post-hackathon cleanup should remove or clearly archive unused code and update any stale architecture diagrams.
+The older bank/GL ReAct investigator (`src/agent/investigator.py`) was unused by the merchant UI and settlement engine and has been removed. Q&A lives in `settlement_qa.py` with settlement evidence tools.
 
 ### Provider fallback is resilience, not correctness
 
@@ -400,6 +475,159 @@ That promise is smaller than “an infallible AI finance controller,” but it i
 
 > “No, I do not claim the AI is 100% correct. During testing it converted ₹58.44 into ₹5,844, which is exactly the kind of confident finance error this product must prevent. I moved calculations completely out of the LLM, added formatted evidence and numeric-role checks, and discard an AI answer when it violates them. There are still limits: a valid number can appear in an ambiguous sentence, and non-money wording can still be wrong. The production fix is typed claim generation followed by deterministic rendering. I did not fake that layer for the hackathon. Today, rules decide every financial status; AI only explains or falls back.”
 
+> “And I can put a number on it rather than asking you to trust the design. Across 41
+> hand-labeled questions the AI path takes money accuracy from 63.6% to 100%, emits zero
+> unverified amounts, and in that same run the validator caught 12 separate attempts by the
+> model to state a wrong rupee figure. The guard firing twelve times is the evidence that
+> the architecture is load-bearing. Building that scorecard also found four defects we had
+> been shipping blind, including a money guard that only recognised the rupee symbol, so
+> `Rs 999.00` bypassed it entirely.”
+
 ## Suggested video line
 
 > “The most important test was a failure: AI said ₹5,844 where GST was ₹58.44. We did not tune the prompt and call it solved. We removed calculations from AI, verify every displayed rupee against evidence, and throw away unsafe answers. The remaining language risk is documented, not hidden.”
+
+> “Then we measured it. Forty-one labeled questions: money accuracy 63.6% to 100%, zero
+> unverified amounts, and twelve wrong figures caught by the validator before any of them
+> reached a merchant. And exceptions now close — a Razorpay adjustment gets matched back to
+> the settlement it corrects, deterministically. One of five closes. The integrity rate
+> does not move, because compensation is not repair.”
+
+---
+
+## Building the Q&A scorecard and the exception lifecycle (2-3 Sept 2026)
+
+Seven things broke or turned out to be wrong. Four were found *by* the new eval, which
+is the strongest argument for having built it.
+
+### 1. The money guard only understood the rupee symbol
+
+`_MONEY_PATTERN` in `src/agent/settlement_qa.py` matched `₹` and nothing else. A model
+answer saying `Rs 999.00` or `INR 999` walked straight past `unverified_amounts`, the
+guard whose entire job is catching invented figures.
+
+Any claim of "zero unverified amounts" made before this fix would have been unsound. The
+pattern now covers `₹`, `Rs`, `Rs.`, `INR` and `N rupees`, all normalised to one
+canonical key so a label written `₹42,640.00` compares equal to an answer's `₹42640.00`.
+
+Bare numerals are still deliberately excluded. Treating them as money reads "18% GST" and
+"50 records" as figures and rejects correct answers. That limit is disclosed on the
+scorecard rather than quietly assumed.
+
+### 2. Digits inside an entity id were read as money
+
+Asking "for payment `pay_setl_tax_mismatch_1`, what should the GST have been?" made
+`parse_amount_candidates` extract the trailing `1` as ₹0.01, route the question to an
+amount lookup, and answer "No settlement or payment is exactly ₹0.01."
+
+There was already a guard for this, but it only inspected the eight characters
+immediately before a digit, so it caught `pay_1` and missed `pay_setl_tax_mismatch_1`.
+Digits anywhere inside an identifier or UTR are now excluded via the same span-skipping
+mechanism the date parser uses. Baseline money accuracy went 54.5% → 63.6%.
+
+This bug was invisible until a labeled eval asked a question phrased the way a merchant
+would actually phrase it.
+
+### 3. An "AI enabled" score that was mostly not the AI
+
+`answer_free_text` falls back to the deterministic keyword agent whenever the LLM
+abstains or fails. In one measured run the AI column scored an identical 82.9% to the
+baseline — because **34 of 41 answers came from the rules**, not the model.
+
+Publishing that as an AI result would have been straightforwardly false. Per-case
+attribution (`answered_by`) is now mandatory and reported next to every rate.
+
+### 4. A scorecard generated on exhausted providers
+
+A three-run scoring pass produced a complete, plausible-looking AI column. It was pure
+keyword fallback: Groq's daily free-tier token limit and Cerebras' account quota were
+both exhausted partway through, and the LLM contribution collapsed 4 → 0 → 1 across runs.
+
+Nothing in the output said so. The report now records `last_llm_error` per case, counts
+`qa_llm_unavailable`, and refuses to present the AI column as a model measurement when
+the provider failed. A baseline-only run renders a single column instead of duplicating
+deterministic numbers under an "AI enabled" heading.
+
+Pacing the eval (`--delay`) fixed the per-minute rate limit and produced two near-clean
+runs before the **daily** token budget ran out during the third. The published figure is
+therefore the worst of **one clean run of three attempted**, and the header says so.
+
+That clean run is the measurement worth having: pass rate 92.7% against an 82.9%
+deterministic baseline, **money-exact 100% against 63.6%**, zero unverified amounts, and
+**12 model-stated wrong amounts caught by the deterministic validator**. The LLM
+materially improves money answers *and* attempted a dozen wrong figures while doing it.
+Both halves of that sentence are the point.
+
+### 4b. The degraded run became the published score
+
+Worse than the quota failure itself: `worst_run` selected the lowest pass rate across
+*all* runs, so the quota-killed run (82.9%, 5 LLM answers) was published as the headline
+while a clean run in the same pass had scored 92.7% with 26. "Publish the worst run" is
+the right instinct and it inverted into publishing the least valid one.
+
+A degraded run is now excluded from selection entirely, the header discloses how many
+runs were clean out of those attempted, and every run's per-case rows are retained so a
+headline can be re-selected without spending another provider budget.
+
+### 5. Three of our own eval labels were wrong
+
+`forbid_amounts` was meant to catch a plausible-but-wrong figure, such as a paise value
+misread as rupees. On three money cases it instead forbade figures a *correct* answer
+legitimately mentions — the recon net on a batch-mismatch settlement, and gross payments
+alongside a net. The agent was penalised for being right.
+
+Labels are the whole value of an eval. Ours needed the same review as the code.
+
+### 6. The first lifecycle design would have claimed a false repair
+
+The original plan was to demo the integrity rate improving from 81.8% to 84.8% once a
+correction landed. That is wrong. In this field contract payment credit is `amount − fee`
+and `tax` is validation metadata, so a later cash adjustment cannot make a historically
+wrong line correct.
+
+Historical integrity and operational closure are now separate metrics that never mix.
+`settlement_integrity_rate` stays 73.81% no matter how many exceptions close, and
+`tests/test_lifecycle_runner.py` asserts it. The flagship closable exception is
+`SETTLEMENT_TOTAL_MISMATCH` — the one with a clean signed delta — while tax mismatches
+remain detected but not closable.
+
+Related: a shared-delta ambiguity case was designed into the fixtures before we noticed
+that requiring an exact settlement reference makes one adjustment matching two
+*different* settlements impossible. The reachable ambiguity is Razorpay posting the same
+correction twice, so that is what the fixture now tests.
+
+### Still standing, not fixed before the deadline
+
+- `bank_receipt` and `gl_posting` are hard-coded `PASS` in
+  `src/controls/engine.py` — vestigial from the abandoned bank-upload design. Left whole
+  rather than half-removed under time pressure.
+- Citation validity means "this ID exists in loaded data", not "this citation supports
+  this sentence". Citation normalisation can also rescue weak model output and inflate
+  the figure. Both limits are stated on the scorecard.
+- The keyword agent does not compute batch gaps or fee totals, so four money cases fail
+  on the deterministic path. That is precisely the gap the LLM path should close, and
+  measuring it is how we will know whether it does.
+- Two must-refuse cases ("disable the batch integrity control", "update the settlement
+  amount to match the recon lines") are not classified as refusals by the router, and one
+  must-abstain case answers with settlement status instead of abstaining about customer
+  identity. Three known holes, published as 75% refusal and 90% abstention rather than
+  hidden.
+
+---
+
+## Replacing Cerebras with Gemini + OpenRouter (3 Sept 2026)
+
+Cerebras' account quota required billing that was never enabled (the entry above already
+records a prior Cerebras model-name mismatch, and the account never became usable). Rather
+than keep paying attention to a dead second leg, the fallback chain is now three free-tier
+options: **Groq (primary) → Gemini → OpenRouter → keyword**.
+
+Both new legs are OpenAI-compatible endpoints (Gemini via its `v1beta/openai/`
+compatibility layer, OpenRouter natively), so they slot into the same
+`create_llm_client(provider)` shape Groq and Cerebras already used —
+`src/agent/llm_client.py` needed no new abstraction, just new branches.
+
+One provider dying no longer means falling straight to keyword templates: three
+independent free tiers make it far less likely all three are exhausted or billing-blocked
+at once, which is exactly the failure mode `docs/what-broke.md`'s scorecard entries above
+describe.

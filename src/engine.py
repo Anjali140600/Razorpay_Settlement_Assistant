@@ -6,7 +6,7 @@ import json
 import src.config  # noqa: F401 — load .env before other imports use os.environ
 
 import time
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 
 from src.agent.llm_client import agent_mode_label, get_llm_model, llm_provider, should_use_llm
@@ -29,6 +29,7 @@ from src.domain.models import (
     SettlementStatus,
 )
 from src.eval.holdout_runner import run_holdout_eval
+from src.lifecycle.runner import run_lifecycle_eval
 
 
 class ReconciliationEngine:
@@ -110,6 +111,13 @@ class ReconciliationEngine:
 
         holdout = run_holdout_eval()
 
+        # Cross-settlement stage. A corrective adjustment necessarily lives in a
+        # different settlement than the exception it compensates, so it cannot be
+        # matched inside the per-settlement loop above. Closure is reported alongside
+        # settlement_integrity_rate and never folded into it: a later adjustment
+        # compensates cash, it does not make an earlier failed control pass.
+        lifecycle = run_lifecycle_eval()
+
         run.metrics = {
             "total_recon_lines": total_lines,
             "total_payment_lines": total_lines,
@@ -122,7 +130,10 @@ class ReconciliationEngine:
             "tax_line_pass_rate": tax_pass / processed if processed else 0.0,
             "labeled_control_accuracy": label_matches / label_total if label_total else None,
             "labeled_control_count": label_total,
-            "label_source": "independent_verifier",
+            # "independent" here means independent of the GENERATOR. The verifier
+            # shares razorpay_contract with the controls, so it is not a fully
+            # independent oracle and the name must not imply one.
+            "label_source": "contract_verifier_independent_of_generator",
             "proven_settlements": verified,
             "investigation_cases": len(run.investigation_cases),
             "agent_mode": mode,
@@ -133,10 +144,11 @@ class ReconciliationEngine:
             "throughput_lines_per_sec": round(total_lines / elapsed, 1) if elapsed > 0 else 0,
             "false_auto_closes": 0,
             **{k: holdout[k] for k in holdout if k.startswith("holdout_")},
+            **{k: lifecycle[k] for k in lifecycle if k.startswith("lifecycle_")},
         }
 
         run.runtime_seconds = elapsed
-        run.completed_at = run.started_at
+        run.completed_at = datetime.utcnow()
         run.audit_events.append(
             AuditEvent(run_id=run.run_id, event_type="run_completed", payload=run.metrics)
         )

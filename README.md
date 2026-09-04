@@ -14,7 +14,7 @@ Finance teams export 22-column Razorpay settlement reports and manually check ba
 
 1. Ingests **Razorpay settlements + combined recon only** (no bank upload, no ERP)
 2. Runs deterministic controls: **batch integrity** and **tax-line integrity**
-3. Lets merchants **ask settlement questions** with **preset buttons + free-text Q&A** — evidence-backed or abstention
+3. Provides one bottom-right **universal assistant** with guided payment/settlement paths, free-text AI, structured answers, contextual actions, and support handoff
 4. Exports honest metrics and full exception list
 
 ## Why Razorpay-native
@@ -41,11 +41,34 @@ Open http://localhost:8501
 ## Headline metrics
 
 - **Settlement integrity rate** — verified / processed on **full demo batch** (not cherry-picked)
-- **6 intentional failures** — tax, batch, refund, transfer, semantic errors exported honestly
+- **11 intentional failures** — tax, batch, refund, transfer, semantic, and query-triage
+  errors (already-compensated, ambiguous/unreconciled adjustments, over-settlement, no
+  recon lines) exported honestly
 - **Independent holdout** — 8 hand-crafted settlements separate from generator (`docs/dataset-realism.md`)
 - **Tax-line pass rate** · **Throughput** · **Full exception export**
+- **Q&A trust scorecard** — 41 hand-labeled questions scored on both answer paths.
+  Measured: **money-exact 63.6% → 100%** with the AI path, **0 unverified amounts
+  emitted**, and **12 model-stated wrong amounts caught by the deterministic
+  validator**. See [sample-output/qa_scorecard.md](sample-output/qa_scorecard.md).
+- **Exception closure rate** — measured on hand-written two-cycle fixtures. Most
+  exceptions stay open by design; only an exact, uniquely-referenced adjustment closes one.
 
-See [docs/dataset-realism.md](docs/dataset-realism.md) for what we claim vs what we don't.
+**Historical integrity is immutable.** A later Razorpay adjustment compensates cash; it
+never makes a failed control pass. `settlement_integrity_rate` and
+`lifecycle_closure_rate` are separate metrics that never mix, and a test enforces it.
+
+See [docs/dataset-realism.md](docs/dataset-realism.md) for what we claim vs what we don't,
+and [docs/metric-contracts.md](docs/metric-contracts.md) for what each metric does *not* claim.
+
+## Measuring the agent
+
+```bash
+python -m src.eval.qa_cli --baseline-only      # deterministic path, no API key
+python -m src.eval.qa_cli --runs 3             # both columns, needs a provider key
+```
+
+The scorecard refuses to present the AI column as a model measurement when the provider
+was unavailable, so a quota-exhausted run cannot be published as model performance.
 
 ## Three demo paths
 
@@ -64,6 +87,7 @@ See [docs/dataset-realism.md](docs/dataset-realism.md) for what we claim vs what
 
 - [docs/PLAN.md](docs/PLAN.md) — master plan + implementation phases
 - [docs/architecture.md](docs/architecture.md) — system overview
+- [docs/universal-guided-assistant-plan.md](docs/universal-guided-assistant-plan.md) — universal assistant design and rollout plan
 - [docs/what-broke.md](docs/what-broke.md) — failures, mitigations, and honest limits
 
 ## Agent modes
@@ -71,7 +95,7 @@ See [docs/dataset-realism.md](docs/dataset-realism.md) for what we claim vs what
 | Mode | Command |
 |------|---------|
 | Rules + keyword Q&A (default) | `./run.sh` |
-| AI Q&A (Groq → Cerebras → keyword) | Set `USE_LLM=1` + `GROQ_API_KEY` and/or `CEREBRAS_API_KEY` in `.env` |
+| AI Q&A (Groq → Gemini → OpenRouter → keyword) | Set `USE_LLM=1` + `GROQ_API_KEY`, `GEMINI_API_KEY`, and/or `OPENROUTER_API_KEY` in `.env` |
 
 Rules engine owns all amounts. Agent runs on exceptions and Q&A only.
 

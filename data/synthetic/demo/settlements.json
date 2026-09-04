@@ -230,6 +230,69 @@
       "utr": "UTR20260804444ORP1",
       "status": "processed",
       "processed_at": "2026-08-23T00:00:00"
+    },
+    {
+      "id": "setl_short_compensated",
+      "amount": 1179000,
+      "utr": "UTR20260803333CMP1",
+      "status": "processed",
+      "processed_at": "2026-08-24T00:00:00"
+    },
+    {
+      "id": "setl_short_compensated_fix",
+      "amount": 3000,
+      "utr": "UTR20260803333CMP2",
+      "status": "processed",
+      "processed_at": "2026-08-25T00:00:00"
+    },
+    {
+      "id": "setl_ambiguous_shortfall",
+      "amount": 886000,
+      "utr": "UTR20260802222AMB1",
+      "status": "processed",
+      "processed_at": "2026-08-26T00:00:00"
+    },
+    {
+      "id": "setl_ambiguous_fix_a",
+      "amount": 4000,
+      "utr": "UTR20260802222AMB2",
+      "status": "processed",
+      "processed_at": "2026-08-27T00:00:00"
+    },
+    {
+      "id": "setl_ambiguous_fix_b",
+      "amount": 4000,
+      "utr": "UTR20260802222AMB3",
+      "status": "processed",
+      "processed_at": "2026-08-27T00:00:00"
+    },
+    {
+      "id": "setl_unreconciled_shortfall",
+      "amount": 688500,
+      "utr": "UTR20260801111UNR1",
+      "status": "processed",
+      "processed_at": "2026-08-28T00:00:00"
+    },
+    {
+      "id": "setl_unreconciled_fix",
+      "amount": 2499,
+      "utr": "UTR20260801111UNR2",
+      "status": "processed",
+      "processed_at": "2026-08-29T00:00:00"
+    },
+    {
+      "id": "setl_over_settled",
+      "amount": 1958500,
+      "utr": "UTR20260800000OVR1",
+      "status": "processed",
+      "processed_at": "2026-08-30T00:00:00"
+    },
+    {
+      "id": "setl_no_recon_lines",
+      "amount": 5000,
+      "utr": "UTR20260899999ZER1",
+      "status": "processed",
+      "processed_at": "2026-09-01T00:00:00"
     }
   ]
 }

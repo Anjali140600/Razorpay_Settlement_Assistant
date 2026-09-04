@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import date, datetime
 from decimal import Decimal
 from enum import Enum
-from typing import Any
+from typing import Any, Literal
 from uuid import uuid4
 
 from pydantic import BaseModel, Field
@@ -67,6 +67,29 @@ class SettlementLine(BaseModel):
     created_at: datetime | None = None
     settled_at: datetime | None = None
     description: str = ""
+    # Razorpay adjustments that correct an earlier cycle name the settlement they
+    # compensate. Without an exact reference, amount plus timing alone would bind the
+    # wrong exception — which is how a matcher silently corrupts a financial record.
+    reference_settlement_id: str | None = None
+
+
+class PendingPayment(BaseModel):
+    """A payment that has been captured but has no settlement yet.
+
+    Deliberately separate from SettlementLine: it has no batch, no UTR, no
+    fee/tax lines, and no triage verdict — it is a different shape of fact,
+    not a SettlementLine with fields missing.
+    """
+
+    entity_id: str
+    order_id: str | None = None
+    amount: int  # paise
+    currency: str = "INR"
+    method: str | None = None
+    captured_at: datetime
+    cycle_type: str = "standard"  # "standard" | "instant_eligible"
+    instant_eligible: str = "unknown"  # "yes" | "no" | "unknown" — never inferred, always read from source data
+    expected_settlement_at: date | None = None
 
 
 class SettlementBatch(BaseModel):
@@ -158,10 +181,112 @@ class AnswerEnvelope(BaseModel):
     citations: list[str] = Field(default_factory=list)
     abstained: bool = False
     escalated_to_support: bool = False
+    offer_raise_ticket: bool = False
     support_ticket_id: str | None = None
     settlement_id: str | None = None
     tool_trace: list[str] = Field(default_factory=list)
     agent_mode: str = "keyword"
+    # Query triage — set whenever a settlement-scoped answer was classified.
+    triage_verdict: str = ""
+    offer_compensation: bool = False
+    compensation_amount_display: str | None = None
+    compensation_claim_id: str | None = None
+
+
+class AssistantSubjectKind(str, Enum):
+    NONE = "none"
+    SETTLEMENT = "settlement"
+    PENDING_PAYMENT = "pending_payment"
+    PENDING_PAYMENT_SET = "pending_payment_set"
+    ACCOUNT = "account"
+
+
+class AssistantActionKind(str, Enum):
+    NAVIGATE = "navigate"
+    RAISE_TICKET = "raise_ticket"
+    CONFIRM_TICKET = "confirm_ticket"
+    SUBMIT_CLAIM = "submit_claim"
+    CONFIRM_CLAIM = "confirm_claim"
+    VIEW_SETTLEMENT = "view_settlement"
+    VIEW_PAYMENT = "view_payment"
+    GET_INSTANT_SETTLEMENT_QUOTE = "get_instant_settlement_quote"
+    TRACK_STATUS = "track_status"
+    CANCEL = "cancel"
+    MARK_RESOLVED = "mark_resolved"
+    NEED_MORE_HELP = "need_more_help"
+
+
+class AssistantResponseBlockKind(str, Enum):
+    DETAILS = "details"
+    CALCULATION = "calculation"
+    EVIDENCE = "evidence"
+    NEXT_STEP = "next_step"
+    WARNING = "warning"
+
+
+class AssistantResponseBlock(BaseModel):
+    kind: AssistantResponseBlockKind
+    title: str | None = None
+    body: str | None = None
+    items: list[str] = Field(default_factory=list)
+    rows: list[dict[str, str]] = Field(default_factory=list)
+
+
+class AssistantAction(BaseModel):
+    action_id: str
+    kind: AssistantActionKind
+    label: str
+    style: Literal["primary", "secondary", "tertiary"] = "secondary"
+    icon: str | None = None
+    enabled: bool = True
+    disabled_reason: str | None = None
+    requires_confirmation: bool = False
+    payload: dict[str, Any] = Field(default_factory=dict)
+
+
+class AssistantResponse(BaseModel):
+    response_id: str = Field(default_factory=lambda: str(uuid4()))
+    heading: str
+    summary: str
+    blocks: list[AssistantResponseBlock] = Field(default_factory=list)
+    citations: list[str] = Field(default_factory=list)
+    actions: list[AssistantAction] = Field(default_factory=list)
+    agent_mode: str = "keyword"
+    ask_resolution: bool = True
+
+
+class AssistantTranscriptMessage(BaseModel):
+    role: Literal["assistant", "user"]
+    content: str = ""
+    response: AssistantResponse | None = None
+
+
+class AssistantSession(BaseModel):
+    node_id: str = "home"
+    back_stack: list[str] = Field(default_factory=list)
+    subject_kind: AssistantSubjectKind = AssistantSubjectKind.NONE
+    subject_ids: list[str] = Field(default_factory=list)
+    subject_context_start: int | None = None
+    last_intent: str | None = None
+    context_version: int = 0
+    messages: list[AssistantTranscriptMessage] = Field(default_factory=list)
+    pending_action: AssistantAction | None = None
+    resolution_status: Literal["open", "resolved"] = "open"
+
+
+class CompensationClaim(BaseModel):
+    """A merchant-consented claim for a provable shortfall, filed to Razorpay support.
+
+    Never a ledger write and never automatic — the agent can only reach this after an
+    explicit consent turn on an AUTO_COMPENSABLE triage verdict.
+    """
+
+    claim_id: str
+    settlement_id: str
+    exception_id: str
+    amount_paise: int
+    evidence_hash: str
+    citations: list[str] = Field(default_factory=list)
 
 
 class ProposedAction(BaseModel):

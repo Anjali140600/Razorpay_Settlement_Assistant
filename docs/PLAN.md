@@ -228,7 +228,7 @@ One codebase, one UI, one demo dataset. Build list:
 | Field contract | `docs/razorpay-field-contract.md` |
 | Controls | `src/controls/engine.py` |
 | Engine | `src/engine.py` |
-| Q&A | `src/agent/settlement_qa.py`, shared evidence in `src/agent/investigator.py` or `src/agent/evidence.py` |
+| Q&A | `src/agent/settlement_qa.py`, `src/agent/evidence.py` |
 | UI | `apps/streamlit_app.py`, `apps/theme.css` (optional) |
 | Data | `data/synthetic/generator.py`, `data/fixtures/`, `data/eval_labels.json` |
 | Tests | `tests/test_reconciliation.py`, `tests/test_settlement_qa.py` |
@@ -309,7 +309,7 @@ User question (untrusted)
 | `fetch_settlement`, `fetch_recon_lines`, `calculate_batch`, `explain_fee_tax`, `search_settlements`, `get_policy`, `finish_answer` | Any write/post/delete/exec tool |
 | Read settlement JSON already loaded | Arbitrary file read, shell, network |
 
-Unknown tool name → return `{error: tool_not_allowed}` (existing pattern in `investigator.py`).
+Unknown tool name → return `{error: tool_not_allowed}` (`src/agent/evidence.py`).
 
 ### 12.4 Input handling
 

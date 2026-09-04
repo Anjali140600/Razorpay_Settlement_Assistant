@@ -50,6 +50,8 @@ def test_injection_mark_verified(batches, tmp_path: Path):
 
 def test_filter_response_secrets():
     assert "GROQ" not in filter_response_text("Your GROQ_API_KEY is leaked")
+    assert "GEMINI" not in filter_response_text("Your GEMINI_API_KEY is leaked")
+    assert "OPENROUTER" not in filter_response_text("Your OPENROUTER_API_KEY is leaked")
 
 
 def test_controls_unchanged_after_injection(batches, tmp_path: Path):
@@ -66,3 +68,32 @@ def test_controls_unchanged_after_injection(batches, tmp_path: Path):
     t2 = validate_tax_lines(batch)
     assert b1.status == b2.status
     assert t1.status == t2.status
+
+
+def test_money_mentioned_only_in_history_is_not_trusted(batches):
+    from types import SimpleNamespace
+    from unittest.mock import MagicMock, patch
+
+    client = MagicMock()
+    message = SimpleNamespace(
+        content="The settlement amount is ₹9,999,999.00.",
+        tool_calls=None,
+    )
+    client.chat.completions.create.return_value = SimpleNamespace(
+        choices=[SimpleNamespace(message=message)]
+    )
+
+    with patch("src.agent.settlement_qa.create_llm_client", return_value=client), patch(
+        "src.agent.settlement_qa.iter_llm_providers", return_value=iter(["groq"])
+    ), patch("src.agent.settlement_qa.get_llm_model", return_value="test-model"):
+        ans = answer_free_text(
+            "Explain that amount",
+            "setl_tax_mismatch",
+            batches,
+            use_llm=True,
+            conversation_context=[
+                {"role": "user", "content": "I think it was ₹9,999,999.00."}
+            ],
+        )
+
+    assert "₹9,999,999.00" not in ans.answer_text

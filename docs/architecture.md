@@ -8,16 +8,53 @@ Razorpay Settlement Assistant closes one finance-ops loop using **Razorpay data 
 flowchart TD
     A[Razorpay settlements] --> N[Canonical snapshots]
     B[Razorpay combined recon] --> N
-    N --> R[Deterministic control engine]
-    R --> G[Verified auto-close]
-    R --> X[Needs-attention exception]
+
+    subgraph DET["DETERMINISTIC — owns every rupee"]
+        R[Control engine<br/>batch + tax integrity]
+        L[Adjustment matcher<br/>6 mandatory predicates]
+        P[Lifecycle projection<br/>OPEN to CLOSED_COMPENSATED]
+        V[Money + citation validators]
+    end
+
+    subgraph AI["LLM — explanation only, never a number"]
+        Q[Bounded ReAct Q&A]
+    end
+
+    N --> R
+    R --> G[Verified]
+    R --> X[Needs attention + dispute packet]
+
+    B -.->|next cycle adjustments| L
+    X --> L
+    L --> P
+    P --> M[Closure metrics<br/>reported separately]
+
     N --> T[Read-only evidence tools]
     R --> T
-    T --> Q[Settlement Q&A: presets or bounded LLM]
-    Q --> U[Audit pack]
+    T --> Q
+    Q --> V
+    V -->|rejected: falls back to rules| G2[Deterministic answer]
+    V -->|accepted| U[Audit pack]
+
     G --> U
     X --> U
+    M --> U
+    G2 --> U
 ```
+
+**Reading the trust boundary.** Everything inside DETERMINISTIC produces or approves
+money. The LLM sits outside it and cannot write a figure, bind an adjustment, or change a
+status: every model answer passes through the money and citation validators, and a
+rejected answer falls back to the deterministic agent. The adjustment matcher is fully
+deterministic by design — a hallucinated binding would silently mark a real financial
+exception resolved.
+
+Note the dashed edge: a corrective adjustment arrives in a *later* settlement than the
+exception it compensates, so matching happens in a cross-settlement stage after the
+per-settlement control loop, not inside it.
+
+`settlement_integrity_rate` comes from `R` alone and is never touched by `P`. Closure is
+a separate number: an adjustment compensates cash, it does not make a failed control pass.
 
 ## Components
 
@@ -27,6 +64,8 @@ flowchart TD
 | Domain | `src/domain/` | Pydantic models, exception codes |
 | Controls | `src/controls/` | Batch integrity, tax-line integrity |
 | Assistant | `src/agent/settlement_qa.py`, `src/agent/evidence.py` | Rule-based presets, bounded LLM Q&A, read-only evidence |
+| Lifecycle | `src/lifecycle/` | Stable exception identity, deterministic adjustment matcher, lifecycle projection |
+| Eval | `src/eval/` | Independent holdout, Q&A trust scorecard, lifecycle labels |
 | Engine | `src/engine.py` | Orchestration, metrics, exception export |
 | UI | `apps/streamlit_app.py` | Simple UI — summary, list, detail, preset + free-text Q&A |
 
@@ -59,16 +98,14 @@ Per payment line in recon:
 
 ## Settlement Q&A
 
-**Presets (rule-based) + free text (Groq → Cerebras → keyword fallback).**
+**Presets (rule-based) + free text (Groq → Gemini → OpenRouter → keyword fallback).**
 
 - Tools: `fetch_settlement`, `fetch_recon_lines`, `calculate_batch`, `explain_fee_tax`, `search_settlements`
-- LLM providers: Groq primary, Cerebras fallback (`src/agent/llm_client.py`)
+- LLM providers: Groq primary, Gemini and OpenRouter fallback (`src/agent/llm_client.py`)
 - User input is untrusted; see [security.md](security.md) and PLAN.md Section 12
 - Every answer cites tool output; abstains when evidence missing
 - Genuine unresolvable failures → simulated support ticket (`RZP-SUP-…`)
 - AI cannot change control decisions
-
-`src/agent/investigator.py` is legacy experimentation and is not wired into the current merchant product path.
 
 ## Check failure display
 

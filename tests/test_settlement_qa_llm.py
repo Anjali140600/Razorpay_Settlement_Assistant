@@ -97,6 +97,106 @@ def test_llm_tool_selection_then_answer(mock_llm_client, batches):
     assert "pay_setl_tax_mismatch_1" in ans.citations
 
 
+def test_llm_payload_separates_recent_conversation_from_evidence(mock_llm_client, batches):
+    mock_llm_client.chat.completions.create.return_value = _mock_completion(
+        tool_calls=[
+            _mock_tool_call(
+                "finish_answer",
+                {
+                    "answer_text": "The GST breakdown is available for setl_tax_mismatch.",
+                    "citations": ["setl_tax_mismatch"],
+                    "abstained": False,
+                },
+            )
+        ]
+    )
+
+    answer_free_text(
+        "Why?",
+        "setl_tax_mismatch",
+        batches,
+        use_llm=True,
+        conversation_context=[
+            {"role": "user", "content": "What about the GST?"},
+            {"role": "assistant", "content": "The fee line needs attention."},
+        ],
+        previous_intent="breakdown_fees",
+    )
+
+    sent = json.loads(mock_llm_client.chat.completions.create.call_args.kwargs["messages"][1]["content"])
+    assert sent["current_question"] == "Why?"
+    assert sent["active_subject"] == {"kind": "settlement", "ids": ["setl_tax_mismatch"]}
+    assert sent["recent_conversation"][0]["content"] == "What about the GST?"
+    assert "evidence" in sent
+
+
+def test_llm_cache_distinguishes_recent_conversation(mock_llm_client, batches):
+    mock_llm_client.chat.completions.create.return_value = _mock_completion(
+        tool_calls=[
+            _mock_tool_call(
+                "finish_answer",
+                {
+                    "answer_text": "Settlement setl_tax_mismatch has a verified explanation.",
+                    "citations": ["setl_tax_mismatch"],
+                    "abstained": False,
+                },
+            )
+        ]
+    )
+
+    # The fixture's one-shot provider iterator is sufficient for normal single-call
+    # tests; this regression deliberately performs two uncached generations.
+    with patch(
+        "src.agent.settlement_qa.iter_llm_providers",
+        side_effect=lambda: iter(["groq"]),
+    ):
+        for prior in ("Explain the GST.", "Explain the settlement status."):
+            answer_free_text(
+                "Why?",
+                "setl_tax_mismatch",
+                batches,
+                use_llm=True,
+                conversation_context=[{"role": "user", "content": prior}],
+            )
+
+    assert mock_llm_client.chat.completions.create.call_count == 2
+
+
+def test_llm_answers_23_aug_from_related_matches(mock_llm_client, batches):
+    """After reload the selected settlement is not 23 Aug — the model still sees the match."""
+    mock_llm_client.chat.completions.create.return_value = _mock_completion(
+        tool_calls=[
+            _mock_tool_call(
+                "finish_answer",
+                {
+                    "answer_text": (
+                        "Settlement setl_orphan_header_drift processed on 23 Aug 2026 "
+                        "has net \u20b944,200.00 (UTR UTR20260804444ORP1)."
+                    ),
+                    "citations": ["setl_orphan_header_drift"],
+                    "abstained": False,
+                },
+            )
+        ]
+    )
+    ans = answer_free_text(
+        "what is the details of 23 aug settlement?",
+        "setl_merchant_d2c_000",
+        batches,
+        use_llm=True,
+    )
+    assert ans.agent_mode == "groq"
+    assert not ans.abstained
+    assert "setl_orphan_header_drift" in ans.answer_text
+    sent = json.loads(mock_llm_client.chat.completions.create.call_args.kwargs["messages"][1]["content"])
+    related_ids = [
+        card["settlement"]["settlement_id"]
+        for card in sent.get("related_matches", [])
+        if "settlement" in card
+    ]
+    assert "setl_orphan_header_drift" in related_ids
+
+
 def test_llm_hallucinated_citation_abstains(mock_llm_client, batches):
     mock_llm_client.chat.completions.create.return_value = _mock_completion(
         tool_calls=[
@@ -111,14 +211,15 @@ def test_llm_hallucinated_citation_abstains(mock_llm_client, batches):
         ]
     )
     ans = answer_free_text("fee issue?", "setl_tax_mismatch", batches, use_llm=True)
-    assert ans.abstained
+    assert "pay_fake" not in ans.answer_text
+    assert ans.agent_mode == "keyword"
 
 
-def test_groq_fail_cerebras_success(batches):
+def test_groq_fail_gemini_success(batches):
     groq_client = MagicMock()
     groq_client.chat.completions.create.side_effect = RuntimeError("groq down")
-    cerebras_client = MagicMock()
-    cerebras_client.chat.completions.create.return_value = _mock_completion(
+    gemini_client = MagicMock()
+    gemini_client.chat.completions.create.return_value = _mock_completion(
         tool_calls=[
             _mock_tool_call(
                 "finish_answer",
@@ -134,10 +235,10 @@ def test_groq_fail_cerebras_success(batches):
     def fake_create(provider=None):
         if provider == "groq":
             return groq_client
-        return cerebras_client
+        return gemini_client
 
     with patch("src.agent.settlement_qa.create_llm_client", side_effect=fake_create), patch(
-        "src.agent.settlement_qa.iter_llm_providers", return_value=iter(["groq", "cerebras"])
+        "src.agent.settlement_qa.iter_llm_providers", return_value=iter(["groq", "gemini"])
     ), patch("src.agent.settlement_qa.get_llm_model", return_value="test-model"):
         ans = answer_free_text(
             "Why does batch not add up?",
@@ -145,7 +246,47 @@ def test_groq_fail_cerebras_success(batches):
             batches,
             use_llm=True,
         )
-    assert ans.agent_mode == "cerebras"
+    assert ans.agent_mode == "gemini"
+    assert not ans.abstained
+
+
+def test_groq_and_gemini_fail_openrouter_success(batches):
+    groq_client = MagicMock()
+    groq_client.chat.completions.create.side_effect = RuntimeError("groq down")
+    gemini_client = MagicMock()
+    gemini_client.chat.completions.create.side_effect = RuntimeError("gemini down")
+    openrouter_client = MagicMock()
+    openrouter_client.chat.completions.create.return_value = _mock_completion(
+        tool_calls=[
+            _mock_tool_call(
+                "finish_answer",
+                {
+                    "answer_text": "Batch gap explained.",
+                    "citations": ["setl_batch_mismatch"],
+                    "abstained": False,
+                },
+            )
+        ]
+    )
+
+    def fake_create(provider=None):
+        if provider == "groq":
+            return groq_client
+        if provider == "gemini":
+            return gemini_client
+        return openrouter_client
+
+    with patch("src.agent.settlement_qa.create_llm_client", side_effect=fake_create), patch(
+        "src.agent.settlement_qa.iter_llm_providers",
+        return_value=iter(["groq", "gemini", "openrouter"]),
+    ), patch("src.agent.settlement_qa.get_llm_model", return_value="test-model"):
+        ans = answer_free_text(
+            "Why does batch not add up?",
+            "setl_batch_mismatch",
+            batches,
+            use_llm=True,
+        )
+    assert ans.agent_mode == "openrouter"
     assert not ans.abstained
 
 
@@ -350,3 +491,143 @@ def test_what_to_do_guidance(batches, tax_decision):
         settlement_decision=tax_decision,
     )
     assert "Raise ticket with Razorpay support" in ans.answer_text
+
+
+class _Body(Exception):
+    """An OpenAI-SDK-shaped error carrying a provider body."""
+
+    def __init__(self, message: str, body: dict):
+        super().__init__(message)
+        self.body = body
+
+
+def test_answer_recovered_from_rejected_tool_call(mock_llm_client, batches):
+    """Groq 400s a malformed tool call but returns the text — it is still a good answer."""
+    mock_llm_client.chat.completions.create.side_effect = _Body(
+        "Error code: 400 - tool_use_failed",
+        {
+            "error": {
+                "code": "tool_use_failed",
+                "failed_generation": (
+                    "<tool_call>\n<function=finish_answer>\n<parameter=answer_text>\n"
+                    "Settlement setl_tax_mismatch has a GST gap on pay_setl_tax_mismatch_1.\n"
+                    "</parameter>\n</function>\n</tool_call>"
+                ),
+            }
+        },
+    )
+    ans = answer_free_text("what is wrong?", "setl_tax_mismatch", batches, use_llm=True)
+    assert ans.agent_mode == "groq"
+    assert not ans.abstained
+    assert "pay_setl_tax_mismatch_1" in ans.answer_text
+    assert "<parameter" not in ans.answer_text
+
+
+def test_recovered_answer_still_fails_validation_when_wrong(batches):
+    """Recovery is not a bypass — a fabricated id in failed_generation is still rejected."""
+    client = MagicMock()
+    client.chat.completions.create.side_effect = _Body(
+        "Error code: 400 - output_parse_failed",
+        {"error": {"code": "output_parse_failed",
+                   "failed_generation": '{"answer_text": "See setl_not_real.", "citations": []}'}},
+    )
+    with patch("src.agent.settlement_qa.create_llm_client", return_value=client), patch(
+        "src.agent.settlement_qa.iter_llm_providers", return_value=iter(["groq"])
+    ), patch("src.agent.settlement_qa.get_llm_model", return_value="test-model"):
+        ans = answer_free_text("explain", "setl_tax_mismatch", batches, use_llm=True)
+    assert ans.agent_mode == "keyword"
+    assert "setl_not_real" not in ans.answer_text
+    assert "unknown id" in (last_llm_error() or "")
+
+
+def test_bare_reasoning_is_not_recovered(batches):
+    """failed_generation holding only scratch reasoning must not reach the merchant."""
+    client = MagicMock()
+    client.chat.completions.create.side_effect = _Body(
+        "Error code: 400 - output_parse_failed",
+        {"error": {"code": "output_parse_failed",
+                   "failed_generation": "We need to answer the user. The evidence shows..."}},
+    )
+    with patch("src.agent.settlement_qa.create_llm_client", return_value=client), patch(
+        "src.agent.settlement_qa.iter_llm_providers", return_value=iter(["groq"])
+    ), patch("src.agent.settlement_qa.get_llm_model", return_value="test-model"):
+        ans = answer_free_text("explain", "setl_tax_mismatch", batches, use_llm=True)
+    assert "We need to answer" not in ans.answer_text
+    assert ans.agent_mode == "keyword"
+
+
+def test_first_turn_sends_no_tool_schemas(mock_llm_client, batches):
+    """Evidence is inlined, so the cheap first turn must not pay for tool schemas."""
+    mock_llm_client.chat.completions.create.return_value = _mock_completion(
+        content="Settlement setl_tax_mismatch is short on GST."
+    )
+    answer_free_text("explain", "setl_tax_mismatch", batches, use_llm=True)
+    first = mock_llm_client.chat.completions.create.call_args_list[0].kwargs
+    assert "tools" not in first
+
+
+def test_rejected_answer_reports_why(mock_llm_client, batches):
+    """A silent fallback to rules is a bug — the merchant is told what happened."""
+    mock_llm_client.chat.completions.create.return_value = _mock_completion(
+        content="Settlement setl_tax_mismatch paid out ₹9,999,999.00."
+    )
+    ans = answer_free_text("what was paid?", "setl_tax_mismatch", batches, use_llm=True)
+    assert ans.agent_mode == "keyword"
+    assert "numeric check" in (last_llm_error() or "")
+
+
+def test_correct_fee_figure_is_not_flagged_as_tax(mock_llm_client, batches):
+    """"Total fee: X" after an earlier mention of tax used to be rejected as misattributed."""
+    from src.agent.settlement_qa import _preloaded_evidence
+
+    evidence = _preloaded_evidence("setl_tax_mismatch", batches)
+    fee = evidence["batch_check"]["total_fee_display"]
+    mock_llm_client.chat.completions.create.return_value = _mock_completion(
+        content=(
+            f"Razorpay deducts fees and tax before payout on setl_tax_mismatch. "
+            f"Total fee: {fee}."
+        )
+    )
+    ans = answer_free_text("why less?", "setl_tax_mismatch", batches, use_llm=True)
+    assert ans.agent_mode == "groq", last_llm_error()
+    assert fee in ans.answer_text
+
+
+def test_repeated_question_is_not_paid_for_twice(mock_llm_client, batches):
+    """A reload re-asking the same question must not spend the daily token budget again."""
+    mock_llm_client.chat.completions.create.return_value = _mock_completion(
+        content="Settlement setl_tax_mismatch is short on GST."
+    )
+    first = answer_free_text("explain this", "setl_tax_mismatch", batches, use_llm=True)
+    calls_after_first = mock_llm_client.chat.completions.create.call_count
+    second = answer_free_text("  Explain   This  ", "setl_tax_mismatch", batches, use_llm=True)
+    assert first.answer_text == second.answer_text
+    assert mock_llm_client.chat.completions.create.call_count == calls_after_first
+
+
+def test_model_corrects_itself_when_a_figure_is_rejected(mock_llm_client, batches):
+    """A mis-scaled total earns one corrective turn, not a silent drop to rules."""
+    from src.agent.settlement_qa import _preloaded_evidence
+
+    fee = _preloaded_evidence("setl_tax_mismatch", batches)["batch_check"]["total_fee_display"]
+    mock_llm_client.chat.completions.create.side_effect = [
+        _mock_completion(content="Total fees on setl_tax_mismatch were ₹9,999,999.00."),
+        _mock_completion(content=f"Total fees on setl_tax_mismatch were {fee}."),
+    ]
+    ans = answer_free_text("what were the fees?", "setl_tax_mismatch", batches, use_llm=True)
+    assert ans.agent_mode == "groq", last_llm_error()
+    assert fee in ans.answer_text
+    assert "9,999,999" not in ans.answer_text
+
+
+def test_reasoning_block_never_reaches_the_merchant(mock_llm_client, batches):
+    mock_llm_client.chat.completions.create.return_value = _mock_completion(
+        content=(
+            "<think>\nThe user is asking about setl_tax_mismatch. I should check the batch.\n</think>\n"
+            "Settlement setl_tax_mismatch has a GST shortfall."
+        )
+    )
+    ans = answer_free_text("explain", "setl_tax_mismatch", batches, use_llm=True)
+    assert "<think>" not in ans.answer_text
+    assert "I should check" not in ans.answer_text
+    assert "GST shortfall" in ans.answer_text

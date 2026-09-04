@@ -1,19 +1,29 @@
 {
-  "settlements": 33,
-  "recon_lines": 173,
-  "payment_lines": 155,
+  "settlements": 42,
+  "recon_lines": 184,
+  "payment_lines": 162,
   "refund_lines": 10,
   "transfer_lines": 4,
-  "adjustment_lines": 4,
-  "verified_settlements": 27,
-  "exception_settlements": 6,
+  "adjustment_lines": 8,
+  "verified_settlements": 31,
+  "exception_settlements": 11,
   "exception_ids": [
     "setl_tax_mismatch",
     "setl_batch_mismatch",
     "setl_fee_semantic_error",
     "setl_refund_wrong_amount",
     "setl_transfer_tax_wrong",
-    "setl_orphan_header_drift"
+    "setl_orphan_header_drift",
+    "setl_short_compensated",
+    "setl_ambiguous_shortfall",
+    "setl_unreconciled_shortfall",
+    "setl_over_settled",
+    "setl_no_recon_lines"
   ],
-  "unix_timestamp_lines": 65
+  "unix_timestamp_lines": 65,
+  "pending_payment_lines": 3,
+  "settlement_cycle": {
+    "standard_days": 2,
+    "instant_available": true
+  }
 }
