@@ -15,7 +15,7 @@ Finance teams export 22-column Razorpay settlement reports and manually check ba
 1. Ingests **Razorpay settlements + combined recon only** (no bank upload, no ERP)
 2. Runs deterministic controls: **batch integrity** and **tax-line integrity**
 3. Provides one bottom-right **universal assistant** with guided payment/settlement paths, free-text AI, structured answers, contextual actions, and support handoff
-4. Exports honest metrics and full exception list
+4. Exports a settlement audit report and a separate cutoff-safe unsettled-payments report
 
 ## Why Razorpay-native
 
@@ -46,6 +46,11 @@ Open http://localhost:8501
   recon lines) exported honestly
 - **Independent holdout** — 8 hand-crafted settlements separate from generator (`docs/dataset-realism.md`)
 - **Tax-line pass rate** · **Throughput** · **Full exception export**
+- **Formula help in the UI** — hover over any main metric heading in the collapsed
+  **Download settlement report** panel to see exactly how it is calculated
+- **Unsettled payments export** — switch to **Unsettled Payments** and open its download
+  panel for a cutoff-dated JSON file with payment details, total amount, and Instant
+  Settlement eligibility counts; payments captured after the cutoff are excluded
 - **Q&A trust scorecard** — 41 hand-labeled questions scored on both answer paths.
   Measured: **money-exact 63.6% → 100%** with the AI path, **0 unverified amounts
   emitted**, and **12 model-stated wrong amounts caught by the deterministic

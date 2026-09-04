@@ -32,7 +32,8 @@ Follow [docs/pitch-script.md](docs/pitch-script.md). Show in order:
    validator-catch count. Say out loud: "this is the number, not a claim."
 8. **Exception lifecycle** — `setl_lc_exact` closes on a matched adjustment while four
    stay open. Point at the integrity rate NOT moving: compensation is not repair.
-9. Download audit pack
+9. Download the settlement audit report, then switch to **Unsettled Payments** and
+   download its cutoff-dated report
 
 **Opening line:** "50+ Razorpay recon lines, settlement integrity rate, evidence-backed Q&A, and every exception we could not resolve — no bank upload required."
 
